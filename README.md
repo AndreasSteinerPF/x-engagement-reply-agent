@@ -132,12 +132,13 @@ This milestone is complete when the X Engagement Reply Agent loads all operation
 
 | Dependency | Access | Purpose |
 |------------|--------|---------|
-| [Reference architecture](./docs/reference-architecture.md) | This repo | Pipeline map and key function names |
+| [investors-mcp (public fork)](https://github.com/prismteam-ai/investors-mcp) | Public git | Sanitized reference code, schema, pipeline map |
+| [Reference architecture](./docs/reference-architecture.md) | This repo | Short pipeline summary and key function names |
 | [Example config and prompts](./examples/reference/) | This repo | Target config/prompt shapes and fixtures |
 | Production MCP (read-only) | URL + tools below | Semantic search over Soofi Safavi article corpus |
 | This user story | This repo | Requirements, acceptance criteria, demo |
 
-The full investors-mcp source tree is Elephant-internal and is **not** linked here. Candidates should use the architecture doc, examples in this repo, and the hosted MCP endpoint below.
+Clone the public fork for the full sanitized source tree (`monitor-x` route, migrations, MCP server code). The docs and examples in this repo are a lighter companion; the fork is the primary code reference.
 
 **MCP endpoint:** `https://investors-mcp.vercel.app/mcp`  
 **Transport:** Streamable HTTP MCP (JSON-RPC over HTTP; use any MCP client that supports streamable HTTP)
@@ -180,7 +181,7 @@ Before candidates start, confirm:
 
 1. Production MCP is live at `https://investors-mcp.vercel.app/mcp`
 2. A smoke test of `queryInvestorContent` with the Soofi article filters above succeeds
-3. This repo's [reference architecture](./docs/reference-architecture.md) and [examples](./examples/reference/) are up to date
+3. The [public investors-mcp fork](https://github.com/prismteam-ai/investors-mcp) is published and candidates can clone it
 4. Candidates receive the MCP URL and example query — not `MCP_WRITE_TOKEN` or infrastructure credentials
 
 Read access to MCP query tools is currently open (no read token required). Optional hardening such as a dedicated read token or rate limits may be added later; candidates will be notified if authentication becomes required.
@@ -193,6 +194,7 @@ Read access to MCP query tools is currently open (no read token required). Optio
 
 ## Reference
 
+- [investors-mcp (public fork)](https://github.com/prismteam-ai/investors-mcp) — sanitized reference implementation
 - [Reference architecture](./docs/reference-architecture.md) — pipeline map for the investors-mcp workflow
 - [Example config and prompts](./examples/reference/) — target shapes for watchlist, settings, prompts, and fixtures
 - [Soofi XYZ Team Kit](https://github.com/soofi-xyz/soofi-xyz-team-kit)

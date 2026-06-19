@@ -2,7 +2,7 @@
 
 This document maps the **investors-mcp** automation pipeline for candidates building the X Engagement Reply Agent.
 
-The reference implementation is Elephant-internal and not linked from this repo. Use this document, the example config and prompts under [`examples/reference/`](../examples/reference/), and the hosted MCP endpoint described in the README.
+The sanitized reference implementation lives at [prismteam-ai/investors-mcp](https://github.com/prismteam-ai/investors-mcp). Start with `app/api/automation/monitor-x/route.ts` and `lib/automation/monitor-settings.ts`. This doc and [`examples/reference/`](../examples/reference/) are a lighter companion.
 
 ## End-to-end flow
 
@@ -25,8 +25,8 @@ Schedule trigger
 
 ## Key functions (read these first)
 
-| Step | Function | Location in reference implementation |
-|------|----------|--------------------------------------|
+| Step | Function | File |
+|------|----------|------|
 | Orchestration | `handleMonitor` | `app/api/automation/monitor-x/route.ts` |
 | Watchlist | `loadWatchlist` | same |
 | Article match | `getTopSoofiArticleSimilarities` | same |
