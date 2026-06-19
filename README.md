@@ -21,6 +21,68 @@ The agent must preserve the current operational outcomes of investors-mcp:
 - **X integration (polling):** scheduled polling of watched authors, new-post detection, referenced-post enrichment, and deduplication of already-processed posts
 - **Asana integration (tasking):** parent task creation for each qualifying post, article-recommendation approval subtasks per reply prompt, similarity metadata, threshold-based assignee rules, and X compose intent links in task notes
 
+## Candidate dependencies
+
+### Provided by Elephant
+
+| Dependency | Access | Purpose |
+|------------|--------|---------|
+| [investors-mcp](https://github.com/elephant-xyz/investors-mcp) (`public-reference` branch) | Public git | Reference code, schema, pipeline map |
+| Production MCP (read-only) | URL + tools below | Semantic search over Soofi Safavi article corpus |
+| This user story | Public git | Requirements, acceptance criteria, demo |
+
+**MCP endpoint:** `https://investors-mcp.vercel.app/mcp`  
+**Transport:** Streamable HTTP MCP (see `scripts/test-streamable-http-client.mjs` in investors-mcp)
+
+**Allowed read tools:**
+
+- `queryInvestorContent` — **required** for article matching and reply grounding
+- `listInvestorContent` — optional, for filtered listing by author, date, or segment type
+
+**Not provided (candidates supply their own):**
+
+- X API credentials and test watchlist handles
+- Asana project, personal access token, and sandbox assignees
+- LLM provider credentials and observability tooling
+- Write access to the knowledge corpus (`addInvestorParagraph` / `MCP_WRITE_TOKEN`)
+
+### Required RAG integration
+
+The agent **must** match posts against Soofi articles by calling the hosted MCP — not by connecting directly to the vector store or blob storage.
+
+For each candidate post, call `queryInvestorContent` with the post text as the query and scope to Soofi articles:
+
+```json
+{
+  "query": "<full text of the X post>",
+  "author": "Soofi Safavi",
+  "contentType": "article",
+  "segmentType": "article_full",
+  "topK": 40
+}
+```
+
+Use returned match scores for threshold gating (parent task vs recommendation subtasks) and use matched article content when generating reply drafts.
+
+**Do not** ingest monitored X posts into the production investors-mcp corpus unless explicitly authorized. Dry-run and local testing must not call write tools.
+
+### Operator setup (Elephant)
+
+Before candidates start, confirm:
+
+1. Production MCP is live at `https://investors-mcp.vercel.app/mcp`
+2. A smoke test of `queryInvestorContent` with the Soofi article filters above succeeds
+3. The sanitized `public-reference` branch is published on investors-mcp
+4. Candidates receive the MCP URL and example query — not `MCP_WRITE_TOKEN` or infrastructure credentials
+
+Read access to MCP query tools is currently open (no read token required). Optional hardening such as a dedicated read token or rate limits may be added later; candidates will be notified if authentication becomes required.
+
+### Out of scope for candidates
+
+- investors-mcp admin / reporting UI (`/reporting`, `/authors`, `/polling`, `/replies`)
+- Postgres-backed watchlist or automation settings in investors-mcp
+- Rebuilding or replacing the MCP server or RAG platform
+
 ## Acceptance Criteria
 
 ### Agent architecture
@@ -56,6 +118,7 @@ The agent must preserve the current operational outcomes of investors-mcp:
 
 ### Knowledge retrieval and article matching
 
+- Integrate with the hosted investors-mcp MCP (`queryInvestorContent`) for article matching; do not use direct vector-store or blob credentials.
 - Compare each new post against Soofi Safavi article content using semantic similarity.
 - Apply configurable thresholds for:
   - parent Asana task creation (best-match raw similarity)
@@ -128,4 +191,5 @@ This milestone is complete when the X Engagement Reply Agent loads all operation
 ## Reference
 
 - [elephant-xyz/investors-mcp](https://github.com/elephant-xyz/investors-mcp) — reference implementation
+- [investors-mcp `public-reference` branch](https://github.com/elephant-xyz/investors-mcp/tree/public-reference) — sanitized reference code (when published)
 - [Soofi XYZ Team Kit](https://github.com/soofi-xyz/soofi-xyz-team-kit)
