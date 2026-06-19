@@ -129,5 +129,3 @@ This milestone is complete when the X Engagement Reply Agent loads all operation
 
 - [elephant-xyz/investors-mcp](https://github.com/elephant-xyz/investors-mcp) — reference implementation
 - [Soofi XYZ Team Kit](https://github.com/soofi-xyz/soofi-xyz-team-kit)
-- [prismteam-ai/oracle-property-intelligence-platform](https://github.com/prismteam-ai/oracle-property-intelligence-platform) — user story format reference
-- [prismteam-ai/agent-network-registration-and-certification-platform](https://github.com/prismteam-ai/agent-network-registration-and-certification-platform) — user story format reference
