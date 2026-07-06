@@ -1,8 +1,10 @@
 # Deployment
 
-**Status: Phase 1 complete (config + prompts).** This document is filled in
+**Status: Phase 2 complete (X polling + dedupe).** This document is filled in
 progressively as each phase in [`implementation-plan.md`](./implementation-plan.md)
-lands. Nothing in this repo is deployed yet.
+lands. Nothing in this repo is deployed yet, and no real X API credentials
+are wired up yet -- `scripts/invoke-local.ts` runs against an in-memory
+fixture, not the live X API.
 
 ## Purpose
 
@@ -17,7 +19,8 @@ full user story and acceptance criteria.
 - **Scheduled:** EventBridge Scheduler, interval from `config/settings.yaml`'s
   `pollIntervalMinutes`. *(Not yet wired — Phase 6.)*
 - **Manual/local:** `scripts/invoke-local.ts` for dry-run/single-author
-  verification without deploying. *(Not yet implemented — Phase 2+.)*
+  verification without deploying. **Implemented against a fixture (Phase 2)**
+  — extended with `--live-mcp`/`--live-llm`/real Asana wiring in later phases.
 
 ## Inputs
 
@@ -35,7 +38,9 @@ full user story and acceptance criteria.
 
 - Asana parent tasks + approval subtasks. *(Not yet implemented — Phase 5.)*
 - Structured run summaries persisted in DynamoDB. *(Not yet implemented —
-  Phase 2/6.)*
+  Phase 5/6, once orchestration exists to produce them.)* Per-handle cursor,
+  batch-rotation, dedupe, and run-lock state **are implemented (Phase 2)** —
+  see `src/state/`.
 
 ## Dependencies
 
