@@ -14,6 +14,7 @@ import { createCircuitBreaker } from "./mcp/circuit-breaker";
 import { createInvestorMcpClient } from "./mcp/investors-mcp-client";
 import { createLangSmithFacade } from "./observability/langsmith";
 import { logRuntime } from "./observability/logger";
+import { notifyCriticalFailure } from "./observability/notify-critical-failure";
 import { runMonitor, type RunSummary } from "./orchestration/run-monitor";
 import { loadPromptSet } from "./prompts/load-prompts";
 import { createCursorStore } from "./state/cursor-store";
@@ -53,11 +54,13 @@ function emptySummary(runKey: string, dryRun: boolean): RunSummary {
 
 /**
  * The real Lambda entrypoint: constructs every real client/store from
- * config and environment, then delegates to runMonitor. Cost-prediction
- * gate, Powertools-based structured logging (beyond the minimal
+ * config and environment, then delegates to runMonitor. A critical failure
+ * (an error escaping runMonitor entirely) pages on-call via
+ * notifyCriticalFailure -- structurally wired now, pointed at a TODO for
+ * the real PagerDuty Events API v2 call. Cost-prediction gate,
+ * Powertools-based structured logging (beyond the minimal
  * src/observability/logger.ts stub), and the EventBridge Scheduler trigger
- * itself land in Phase 6 -- this phase wires the orchestration end to end
- * for the first time, including the run-lock and run-summary persistence.
+ * itself still land in Phase 6.
  */
 export async function handler(event: HandlerEvent = {}): Promise<RunSummary> {
   const dryRun = event.dryRun ?? false;
@@ -144,12 +147,7 @@ export async function handler(event: HandlerEvent = {}): Promise<RunSummary> {
     });
     return summary;
   } catch (error) {
-    logRuntime({
-      level: "error",
-      message: "Monitor run failed",
-      runKey,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    notifyCriticalFailure({ runKey, error });
     throw error;
   } finally {
     await langsmith.flush();
