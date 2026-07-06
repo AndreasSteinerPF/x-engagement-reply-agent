@@ -1,0 +1,50 @@
+name: CI
+
+# Self-contained equivalent of the company's ci-cd-dev.yml/ci-cd-prod.yml caller
+# workflows (see skills/integrate-ci-cd in soofi-xyz-team-kit). Those callers
+# invoke a shared reusable workflow at Spring-Oaks-Capital-LLC/github-workflows
+# over AWS OIDC; that repo is company-private and this assignment repo lives
+# under prismteam-ai, so there is no access and no OIDC role to assume here.
+# This workflow runs the same six justfile recipes in the same order instead.
+# Real `cdk deploy` is intentionally NOT wired into automatic CI — it requires
+# AWS credentials this take-home repo doesn't have configured, and deploying
+# to a candidate's personal AWS account should never happen unattended. See
+# docs/deployment.md and docs/implementation-plan.md.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: format
+        run: npx prettier --check .
+
+      - name: lint
+        run: npx eslint .
+
+      - name: type-check
+        run: npx tsc --noEmit
+
+      - name: test
+        run: npx vitest run
+
+      - name: build (cdk synth)
+        run: npx cdk synth --strict
