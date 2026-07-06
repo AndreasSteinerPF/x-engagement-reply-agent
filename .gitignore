@@ -9,5 +9,8 @@ coverage/
 *.log
 .DS_Store
 
+# scripts/invoke-local.ts --persist state file -- local-only, never shared
+.local-state/
+
 # Personal learning notes -- never commit
 docs/progress-explained.md

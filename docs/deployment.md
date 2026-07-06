@@ -31,8 +31,11 @@ full user story and acceptance criteria.
   verification without deploying. **Fully implemented** — calls the real
   `runMonitor()` orchestrator with X always fixture-backed (no candidate X
   credentials exist yet) and MCP/Bedrock/Asana each independently real when
-  their flag is passed. `--force-retask` (bypassing dedupe for the
-  prompt-editing demo scenario) is deferred to Phase 7.
+  their flag is passed. `--persist` backs cursor/dedupe state with a local
+  JSON file instead of an in-memory `Map`, so running the script twice in a
+  row provably skips the second time — the one demo scenario that otherwise
+  needed a real DynamoDB table to verify. `--force-retask` (bypassing dedupe
+  for the prompt-editing demo scenario) is deferred to Phase 7.
 - **Scheduled (production):** the real Lambda `handler.ts` is implemented
   (constructs every real client/store, acquires the run lock, calls
   `runMonitor()`, persists the run summary, releases the lock) but is not

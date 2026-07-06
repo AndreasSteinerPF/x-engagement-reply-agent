@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { createDraftingModel } from "../src/agent/bedrock-model";
 import { createAsanaClient } from "../src/asana/client";
@@ -22,6 +24,7 @@ import { runMonitor } from "../src/orchestration/run-monitor";
 import { loadPromptSet } from "../src/prompts/load-prompts";
 import type { CursorStore } from "../src/state/cursor-store";
 import type { DedupeStore, MarkProcessedParams } from "../src/state/dedupe-store";
+import { createFileStateStore } from "../src/state/file-state-store";
 import type { XClient } from "../src/x/client";
 import type { RawTweet, RawUser } from "../src/x/types";
 
@@ -44,11 +47,20 @@ import type { RawTweet, RawUser } from "../src/x/types";
  *                 dry-run gateway if those aren't configured.
  *   --dry-run     Forces the dry-run gateway regardless of --live-asana --
  *                 zero Asana network calls, synthetic result only.
+ *   --persist     Backs cursor/dedupe state with a JSON file
+ *                 (.local-state/invoke-local-state.json) instead of an
+ *                 in-memory Map that resets every invocation. This is what
+ *                 lets you actually prove idempotency locally: run once,
+ *                 run again, and see the second run skip the same post --
+ *                 without needing a real DynamoDB table. Never touches real
+ *                 DynamoDB either way; this is a separate, local-only file.
+ *   --reset       Deletes the persisted state file first, so a --persist
+ *                 run starts from a clean slate. No effect without --persist.
  *
- * Cursor/dedupe state is always in-memory and fresh per invocation --
- * this script never touches real DynamoDB, so it's safe to re-run.
+ * Cursor/dedupe state defaults to in-memory and fresh per invocation --
+ * this script never touches real DynamoDB, so it's always safe to re-run.
  *
- * Usage: npm run invoke:local -- --author exampleauthor --dry-run [--live-mcp] [--live-llm] [--live-asana]
+ * Usage: npm run invoke:local -- --author exampleauthor --dry-run [--live-mcp] [--live-llm] [--live-asana] [--persist] [--reset]
  */
 
 const FIXTURE_AUTHOR: RawUser = { id: "1001", username: "exampleauthor", name: "Example Author" };
@@ -146,6 +158,33 @@ function createFixtureLangsmith(): LangSmithFacade {
   };
 }
 
+/**
+ * A gateway for local --persist demos without real Asana credentials: the
+ * Asana result is a labeled fixture (never a network call), but cursor and
+ * dedupe writes are real -- delegated to whatever cursorStore/dedupeStore
+ * was passed in (the file-backed one, under --persist). This is what makes
+ * "run it twice, see the second run skip the post" provable without Asana
+ * credentials; createDryRunSideEffectGateway() can't do this because it
+ * no-ops every write, including cursor/dedupe, by design.
+ */
+function createFixtureAsanaWithRealStateGateway(
+  cursorStore: CursorStore,
+  dedupeStore: DedupeStore,
+): SideEffectGateway {
+  return {
+    dryRun: false,
+    processAsanaTasking: async () => ({
+      created: true,
+      parentTaskGid: "fixture-local-persist-task",
+      parentTaskUrl: "https://app.asana.com/0/0/0 (fixture -- no real Asana call made)",
+      subtasks: [],
+    }),
+    writeCursor: (handle, statusId) => cursorStore.setCursor(handle, statusId),
+    writeDedupeKey: (params) => dedupeStore.markProcessed(params),
+    writeRunSummary: async () => {},
+  };
+}
+
 function createInMemoryCursorStore(): CursorStore {
   const cursors = new Map<string, string>();
   return {
@@ -177,6 +216,8 @@ async function main(): Promise<void> {
       "live-mcp": { type: "boolean", default: false },
       "live-llm": { type: "boolean", default: false },
       "live-asana": { type: "boolean", default: false },
+      persist: { type: "boolean", default: false },
+      reset: { type: "boolean", default: false },
     },
   });
 
@@ -185,9 +226,11 @@ async function main(): Promise<void> {
   const liveMcp = values["live-mcp"] ?? false;
   const liveLlm = values["live-llm"] ?? false;
   const liveAsana = values["live-asana"] ?? false;
+  const persist = values.persist ?? false;
+  const reset = values.reset ?? false;
 
   console.log(
-    `[invoke-local] author=${author} dryRun=${dryRun} liveMcp=${liveMcp} liveLlm=${liveLlm} liveAsana=${liveAsana}`,
+    `[invoke-local] author=${author} dryRun=${dryRun} liveMcp=${liveMcp} liveLlm=${liveLlm} liveAsana=${liveAsana} persist=${persist}`,
   );
 
   const settings = loadSettings();
@@ -206,8 +249,25 @@ async function main(): Promise<void> {
 
   const xClient = createFixtureXClient();
   const breaker = createCircuitBreaker(3);
-  const cursorStore = createInMemoryCursorStore();
-  const dedupeStore = createInMemoryDedupeStore();
+
+  let cursorStore: CursorStore;
+  let dedupeStore: DedupeStore;
+  if (persist) {
+    const stateFilePath = join(process.cwd(), ".local-state", "invoke-local-state.json");
+    if (reset) {
+      await rm(stateFilePath, { force: true });
+      console.log(`[invoke-local] --reset: deleted ${stateFilePath}`);
+    }
+    const fileStore = createFileStateStore(stateFilePath);
+    cursorStore = fileStore;
+    dedupeStore = fileStore;
+    console.log(
+      `[invoke-local] state: persisted to ${stateFilePath} (run again to see dedupe kick in)`,
+    );
+  } else {
+    cursorStore = createInMemoryCursorStore();
+    dedupeStore = createInMemoryDedupeStore();
+  }
 
   const mcpClient = liveMcp ? createInvestorMcpClient() : createFixtureMcpClient();
   if (liveMcp) console.log("[invoke-local] MCP: live (https://investors-mcp.vercel.app/mcp)");
@@ -221,7 +281,9 @@ async function main(): Promise<void> {
   }
 
   let gateway: SideEffectGateway;
-  if (!dryRun && liveAsana && env.ASANA_ACCESS_TOKEN && env.ASANA_PROJECT_GID) {
+  if (dryRun) {
+    gateway = createDryRunSideEffectGateway();
+  } else if (liveAsana && env.ASANA_ACCESS_TOKEN && env.ASANA_PROJECT_GID) {
     const asanaClient = createAsanaClient({ accessToken: env.ASANA_ACCESS_TOKEN });
     const dedupeCache = createAsanaDedupeCache({ asanaClient });
     gateway = createLiveSideEffectGateway({
@@ -233,8 +295,16 @@ async function main(): Promise<void> {
       runSummaryStore: { writeRunSummary: async () => {} }, // no real DynamoDB locally
     });
     console.log(`[invoke-local] Asana: live (project=${env.ASANA_PROJECT_GID})`);
+  } else if (persist) {
+    if (liveAsana) {
+      console.log(
+        "[invoke-local] --live-asana requested but ASANA_ACCESS_TOKEN/ASANA_PROJECT_GID are not set -- using a fixture Asana result (cursor/dedupe still persist for real via --persist).",
+      );
+    }
+    gateway = createFixtureAsanaWithRealStateGateway(cursorStore, dedupeStore);
+    console.log("[invoke-local] Asana: fixture (no credentials) -- state still writes for real.");
   } else {
-    if (liveAsana && !dryRun) {
+    if (liveAsana) {
       console.log(
         "[invoke-local] --live-asana requested but ASANA_ACCESS_TOKEN/ASANA_PROJECT_GID are not set -- falling back to dry-run for Asana.",
       );
