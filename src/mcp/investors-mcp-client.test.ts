@@ -92,6 +92,24 @@ describe("createInvestorMcpClient", () => {
     });
   });
 
+  it("rejects a successful result whose matches don't match the expected shape", async () => {
+    // `score` missing on the match -- a real shape drift must fail loudly
+    // here rather than corrupt similarity-gating math three modules away.
+    mockCallTool.mockResolvedValue(
+      textResult({
+        query: "q",
+        topK: 5,
+        matchCount: 1,
+        matches: [{ id: "1", key: "k", metadata: {}, blob: null }],
+      }),
+    );
+
+    const client = createInvestorMcpClient();
+    await expect(client.queryInvestorContent({ query: "q" })).rejects.toThrow(
+      /did not match the expected shape/,
+    );
+  });
+
   it("throws a descriptive error when the tool result has isError: true", async () => {
     mockCallTool.mockResolvedValue(textResult({ error: "boom" }, true));
 

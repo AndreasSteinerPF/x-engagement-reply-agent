@@ -1,23 +1,39 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { z } from "zod";
 
 export const DEFAULT_INVESTORS_MCP_ENDPOINT = "https://investors-mcp.vercel.app/mcp";
 
-export type McpMatch = {
-  id: string;
-  score: number;
-  key: string;
-  metadata: Record<string, unknown>;
-  blob: { sourceUri?: string; title?: string; content?: string } | null;
-  blobError?: string;
-};
+// Schema-first, validated at the client boundary (see
+// "External System Response Validation" in the company's engineering
+// guidelines) -- the MCP tool's JSON-in-a-text-block body is parsed through
+// Zod rather than blindly cast, so a shape change or an unexpected error
+// payload fails loudly here instead of corrupting data downstream.
+const McpBlobSchema = z
+  .object({
+    sourceUri: z.string().optional(),
+    title: z.string().optional(),
+    content: z.string().optional(),
+  })
+  .nullable();
 
-export type QueryInvestorContentResponse = {
-  query: string;
-  topK: number;
-  matchCount: number;
-  matches: McpMatch[];
-};
+const McpMatchSchema = z.object({
+  id: z.string(),
+  score: z.number(),
+  key: z.string(),
+  metadata: z.record(z.string(), z.unknown()),
+  blob: McpBlobSchema,
+  blobError: z.string().optional(),
+});
+export type McpMatch = z.infer<typeof McpMatchSchema>;
+
+const QueryInvestorContentResponseSchema = z.object({
+  query: z.string(),
+  topK: z.number(),
+  matchCount: z.number(),
+  matches: z.array(McpMatchSchema),
+});
+export type QueryInvestorContentResponse = z.infer<typeof QueryInvestorContentResponseSchema>;
 
 export type QueryInvestorContentParams = {
   query: string;
@@ -78,7 +94,14 @@ export function createInvestorMcpClient(options: InvestorMcpClientOptions = {}):
   async function queryInvestorContent(
     params: QueryInvestorContentParams,
   ): Promise<QueryInvestorContentResponse> {
-    return (await callTool("queryInvestorContent", { ...params })) as QueryInvestorContentResponse;
+    const raw = await callTool("queryInvestorContent", { ...params });
+    const parsed = QueryInvestorContentResponseSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(
+        `queryInvestorContent response did not match the expected shape: ${parsed.error.message}`,
+      );
+    }
+    return parsed.data;
   }
 
   async function listInvestorContent(params: ListInvestorContentParams): Promise<unknown> {

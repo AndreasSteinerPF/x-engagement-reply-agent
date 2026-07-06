@@ -154,4 +154,43 @@ describe("createXClient", () => {
       await expect(client.fetchRecentPosts("123")).rejects.toThrow(/HTTP 500/);
     });
   });
+
+  describe("response shape validation", () => {
+    it("rejects a 2xx response whose tweets don't match the expected shape", async () => {
+      // Missing the required `text` field -- a real API returning 200 with
+      // a shape that's silently drifted must fail loudly, not pass through.
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ data: [{ id: "1" }] }));
+      const client = createXClient({ bearerToken: "test-token", fetchImpl });
+
+      await expect(client.fetchRecentPosts("123")).rejects.toThrow(
+        /did not match the expected shape/,
+      );
+    });
+
+    it("treats a body with only unrecognized fields as an empty result, since data/includes are optional", async () => {
+      // Documents a real limitation: because `data`/`includes` are optional
+      // (a legitimate empty-result response omits them), a 200 response
+      // that is actually an unexpected error-shaped object with NO
+      // recognized fields at all passes through as "zero posts" rather
+      // than throwing. X's API returns non-2xx for real errors (caught
+      // above), so this is a low-risk edge case, not a silent-corruption
+      // path -- but it's worth being explicit that Zod can't catch it.
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ error: "rate limited upstream" }));
+      const client = createXClient({ bearerToken: "test-token", fetchImpl });
+
+      const result = await client.fetchRecentPosts("123");
+      expect(result.posts).toEqual([]);
+    });
+
+    it("rejects resolveUserIds results missing required user fields", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ data: [{ id: "1", username: "a" }] }));
+      const client = createXClient({ bearerToken: "test-token", fetchImpl });
+
+      await expect(client.resolveUserIds(["a"])).rejects.toThrow(
+        /did not match the expected shape/,
+      );
+    });
+  });
 });

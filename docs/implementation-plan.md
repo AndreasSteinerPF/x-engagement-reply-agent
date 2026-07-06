@@ -132,6 +132,7 @@ query without rebuilding the legacy admin/reporting UI (explicitly out of scope)
 - **Scope reduction (flagged):** do not port the reference's GraphQL-scraping/bearer-token-discovery fallback for long-form X "Articles" — it's undocumented-API territory with ToS risk, disproportionate for this milestone. Use the documented `article` field and `note_tweet.text`, falling back to plain `text`; if none suffice, record `articleEnrichment: "unavailable"` explicitly rather than silently degrading.
 - First-ever run per handle (no cursor): bounded backfill window (`backfillHours`, default 24), not full history.
 - 429 handling: stop processing remaining authors this run (already-processed ones keep their persisted progress); alert only on N consecutive rate-limited runs, not per-429.
+- **Response validation (added during a Phase 0-3 self-audit):** every X API response is validated against a Zod schema (`src/x/types.ts`) before use, not blindly type-cast — per `apply-engineering-guidelines`' CRITICAL-impact "External System Response Validation" rule. A 2xx status with a shape that's silently drifted (or an unexpected error body) throws loudly at the client boundary instead of corrupting data downstream. Same treatment applied to the MCP client's `queryInvestorContent` response.
 
 ### MCP client
 

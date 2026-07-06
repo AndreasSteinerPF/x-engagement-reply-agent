@@ -1,4 +1,11 @@
-import type { RawIncludes, RawTweet, RawUser } from "./types";
+import type { z } from "zod";
+import {
+  TweetsResponseSchema,
+  UsersByResponseSchema,
+  type RawIncludes,
+  type RawTweet,
+  type RawUser,
+} from "./types";
 
 const X_API_BASE_URL = "https://api.twitter.com/2";
 
@@ -50,7 +57,18 @@ export function createXClient(options: XClientOptions): XClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const baseUrl = options.baseUrl ?? X_API_BASE_URL;
 
-  async function request<T>(path: string, searchParams: Record<string, string>): Promise<T> {
+  /**
+   * Fetches and validates a response against `schema`. Per the company's
+   * "External System Response Validation" guideline, a 2xx status alone
+   * is not enough -- the body is parsed through Zod so an API that
+   * silently changes shape (or returns an error object with a 200) fails
+   * loudly here, at the boundary, rather than corrupting data downstream.
+   */
+  async function request<Schema extends z.ZodTypeAny>(
+    path: string,
+    searchParams: Record<string, string>,
+    schema: Schema,
+  ): Promise<z.infer<Schema>> {
     const url = new URL(`${baseUrl}${path}`);
     for (const [key, value] of Object.entries(searchParams)) {
       url.searchParams.set(key, value);
@@ -74,16 +92,24 @@ export function createXClient(options: XClientOptions): XClient {
       );
     }
 
-    return (await response.json()) as T;
+    const json: unknown = await response.json();
+    const parsed = schema.safeParse(json);
+    if (!parsed.success) {
+      throw new Error(
+        `X API response for ${path} did not match the expected shape: ${parsed.error.message}`,
+      );
+    }
+    return parsed.data;
   }
 
   async function resolveUserIds(handles: string[]): Promise<Map<string, RawUser>> {
     const usersByHandle = new Map<string, RawUser>();
     for (const group of chunk(handles, MAX_IDS_PER_REQUEST)) {
-      const data = await request<{ data?: RawUser[] }>("/users/by", {
-        usernames: group.join(","),
-        "user.fields": USER_FIELDS,
-      });
+      const data = await request(
+        "/users/by",
+        { usernames: group.join(","), "user.fields": USER_FIELDS },
+        UsersByResponseSchema,
+      );
       for (const user of data.data ?? []) {
         usersByHandle.set(user.username.toLowerCase(), user);
       }
@@ -105,10 +131,7 @@ export function createXClient(options: XClientOptions): XClient {
       searchParams.since_id = fetchOptions.sinceId;
     }
 
-    const data = await request<{ data?: RawTweet[]; includes?: RawIncludes }>(
-      `/users/${userId}/tweets`,
-      searchParams,
-    );
+    const data = await request(`/users/${userId}/tweets`, searchParams, TweetsResponseSchema);
     return { posts: data.data ?? [], includes: data.includes ?? {} };
   }
 
@@ -118,12 +141,16 @@ export function createXClient(options: XClientOptions): XClient {
     const posts: RawTweet[] = [];
     const users: RawUser[] = [];
     for (const group of chunk(ids, MAX_IDS_PER_REQUEST)) {
-      const data = await request<{ data?: RawTweet[]; includes?: RawIncludes }>("/tweets", {
-        ids: group.join(","),
-        "tweet.fields": TWEET_FIELDS,
-        expansions: TWEET_EXPANSIONS,
-        "user.fields": USER_FIELDS,
-      });
+      const data = await request(
+        "/tweets",
+        {
+          ids: group.join(","),
+          "tweet.fields": TWEET_FIELDS,
+          expansions: TWEET_EXPANSIONS,
+          "user.fields": USER_FIELDS,
+        },
+        TweetsResponseSchema,
+      );
       posts.push(...(data.data ?? []));
       users.push(...(data.includes?.users ?? []));
     }
