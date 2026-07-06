@@ -1,16 +1,19 @@
 # Deployment
 
-**Status: Phase 4 complete (LLM drafting + LangSmith tracing).** This
-document is filled in progressively as each phase in
+**Status: Phase 5 complete (Asana tasking + full orchestration wiring).**
+This document is filled in progressively as each phase in
 [`implementation-plan.md`](./implementation-plan.md) lands. Nothing in this
-repo is deployed yet. `scripts/invoke-local.ts` runs X polling against an
-in-memory fixture, but `--live-mcp` and `--live-llm` already call real
-external services: the public hosted investors-mcp MCP server (no
-credentials needed) and Amazon Bedrock + LangSmith (needs **your own** AWS
-credentials/region and, optionally, a `LANGSMITH_API_KEY` — this repo's
-sandbox has neither configured, so `--live-llm` has only been verified to
-reach Bedrock and fail on missing credentials, not verified against a real
-model response or a real LangSmith trace yet).
+repo is deployed yet. `scripts/invoke-local.ts` now calls the real
+`runMonitor()` orchestrator (the same function `handler.ts` uses in Lambda)
+against an in-memory X fixture, with `--live-mcp`/`--live-llm`/`--live-asana`
+each independently opting into the real hosted MCP, real Amazon Bedrock +
+LangSmith, and real Asana respectively — falling back gracefully to a
+fixture/dry-run when a flag is passed without its matching credentials
+configured. This sandbox has X/Bedrock/LangSmith/Asana credentials
+configured for none of them, so live verification has only gone as far as
+"reaches the real dependency and fails for the right reason" (missing
+credentials) for Bedrock and Asana; MCP has been verified against real
+production data (Phase 3).
 
 ## Purpose
 
@@ -25,12 +28,16 @@ full user story and acceptance criteria.
 - **Scheduled:** EventBridge Scheduler, interval from `config/settings.yaml`'s
   `pollIntervalMinutes`. *(Not yet wired — Phase 6.)*
 - **Manual/local:** `scripts/invoke-local.ts` for dry-run/single-author
-  verification without deploying. X polling **implemented against a fixture
-  (Phase 2)**; article matching **implemented against the real live MCP
-  server via `--live-mcp` (Phase 3)**; reply drafting **implemented against
-  real Amazon Bedrock + LangSmith via `--live-llm` (Phase 4)** — falls back to
-  a synthetic fixture article if `--live-mcp` wasn't also passed. Real Asana
-  wiring lands in Phase 5.
+  verification without deploying. **Fully implemented** — calls the real
+  `runMonitor()` orchestrator with X always fixture-backed (no candidate X
+  credentials exist yet) and MCP/Bedrock/Asana each independently real when
+  their flag is passed. `--force-retask` (bypassing dedupe for the
+  prompt-editing demo scenario) is deferred to Phase 7.
+- **Scheduled (production):** the real Lambda `handler.ts` is implemented
+  (constructs every real client/store, acquires the run lock, calls
+  `runMonitor()`, persists the run summary, releases the lock) but is not
+  yet deployed or wired to an actual EventBridge Scheduler trigger — that's
+  Phase 6.
 
 ## Inputs
 
@@ -46,9 +53,12 @@ full user story and acceptance criteria.
 
 ## Outputs
 
-- Asana parent tasks + approval subtasks. *(Not yet implemented — Phase 5.)*
-- Structured run summaries persisted in DynamoDB. *(Not yet implemented —
-  Phase 5/6, once orchestration exists to produce them.)* Per-handle cursor,
+- Asana parent tasks + approval subtasks. **Implemented (Phase 5)** —
+  `src/asana/create-asana-tasking.ts`; not yet verified against a real
+  sandbox project (no Asana credentials configured in this sandbox).
+- Structured run summaries persisted in DynamoDB. **Implemented (Phase 5)**
+  — `src/state/run-summary-store.ts`, written via the side-effect gateway
+  (skipped in dry-run, like every other write). Per-handle cursor,
   batch-rotation, dedupe, and run-lock state **are implemented (Phase 2)** —
   see `src/state/`.
 
@@ -58,7 +68,7 @@ full user story and acceptance criteria.
 |---|---|
 | Hosted MCP (`https://investors-mcp.vercel.app/mcp`, `queryInvestorContent`) | Provided, read-only, no credentials required — verified live (Phase 3) |
 | X API v2 credentials | Candidate-supplied — not yet configured |
-| Asana PAT + sandbox project | Candidate-supplied — not yet configured |
+| Asana PAT + sandbox project | Candidate-supplied — not yet configured; code wired (Phase 5), `--live-asana` verified to gracefully fall back to dry-run without credentials |
 | Amazon Bedrock model access (via Vercel AI SDK) | Candidate-supplied AWS account — code wired and reaches Bedrock (Phase 4), but not yet run against a real model since this sandbox has no AWS credentials |
 | LangSmith account (LLM trace observability) | Candidate-supplied — facade implemented and degrades gracefully without a key (Phase 4), but no real trace has been observed yet |
 

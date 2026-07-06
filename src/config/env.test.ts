@@ -22,4 +22,22 @@ describe("loadRuntimeEnv", () => {
   it("throws when AWS_REGION is present but empty", () => {
     expect(() => loadRuntimeEnv({ AWS_REGION: "" })).toThrow(/Invalid runtime environment/);
   });
+
+  it("passes through Asana configuration values when present", () => {
+    const env = loadRuntimeEnv({
+      ASANA_ACCESS_TOKEN: "token",
+      ASANA_PROJECT_GID: "123",
+      ASANA_SECTION_GID: "456",
+    });
+
+    expect(env.ASANA_ACCESS_TOKEN).toBe("token");
+    expect(env.ASANA_PROJECT_GID).toBe("123");
+    expect(env.ASANA_SECTION_GID).toBe("456");
+  });
+
+  it("leaves Asana configuration undefined when absent", () => {
+    const env = loadRuntimeEnv({});
+    expect(env.ASANA_ACCESS_TOKEN).toBeUndefined();
+    expect(env.ASANA_PROJECT_GID).toBeUndefined();
+  });
 });
