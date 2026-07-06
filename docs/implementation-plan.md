@@ -147,6 +147,16 @@ consecutive failures in one run) so a downed dependency can't burn the whole
 Lambda time budget on retries. `addInvestorParagraph` (write) has **no code
 path in this repo at all** — not gated by dry-run, simply never implemented.
 
+**Verified discrepancy (2026-07-06):** the README's required example uses
+`topK: 40`, but the live server rejects anything above 20 (`isError: true`,
+non-JSON body) — confirmed by testing `topK: 20` (succeeds) then `topK: 40`
+(fails) against the same live endpoint. The MCP client/matching layer clamps
+the value actually sent to 20 regardless of what `defaultTopK` is configured
+to; see `docs/config-schema.md` for the full writeup. Caught by actually
+running Phase 3's live verification step against the real server rather than
+trusting the written spec — worth remembering as a general lesson for the
+rest of this build.
+
 ### LLM drafting
 
 - Amazon Bedrock via `@ai-sdk/amazon-bedrock`, wrapped with prompt caching (port the kit's `implementation-bedrock-prompt-caching.md` pattern near-verbatim — cache the first system message + last non-system message, log cache read/write tokens).

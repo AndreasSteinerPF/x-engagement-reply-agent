@@ -1,3 +1,4 @@
+import { normalizeWhitespace, truncateToHeader } from "../util/text";
 import type { RawTweet } from "./types";
 
 export type ArticleEnrichmentStatus = "not-applicable" | "available" | "unavailable";
@@ -18,24 +19,6 @@ export type ParsedPost = {
 // requires before treating enriched article/note content as a real
 // improvement over the plain tweet text, rather than noise/duplication.
 const MEANINGFUL_ENRICHMENT_MARGIN = 40;
-
-function normalizeWhitespace(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-/**
- * Ported near-verbatim from investors-mcp's truncateToHeader.
- */
-export function truncateToHeader(text: string, maxLength = 80): string {
-  const cleaned = normalizeWhitespace(text);
-  if (cleaned.length <= maxLength) return cleaned;
-  const truncated = cleaned.slice(0, maxLength);
-  const lastSpace = truncated.lastIndexOf(" ");
-  if (lastSpace > maxLength * 0.5) {
-    return `${truncated.slice(0, lastSpace)}...`;
-  }
-  return `${truncated}...`;
-}
 
 /**
  * Parses a raw X API v2 tweet into this agent's post domain shape.

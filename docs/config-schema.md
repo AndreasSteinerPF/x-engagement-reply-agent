@@ -41,7 +41,7 @@ authors:
 | `pollIntervalMinutes` | int | 1–1440 | — required | |
 | `defaultBatchSize` | int | 1–20 | — required | authors processed per scheduled run before cursor rotation wraps |
 | `defaultMaxPostsPerAuthor` | int | 1–100 | — required | |
-| `defaultTopK` | int | 1–100 | — required | **widened from the legacy schema's 1–20 cap** — the assignment's required MCP integration example itself uses `topK: 40` |
+| `defaultTopK` | int | 1–100 | — required | **widened from the legacy schema's 1–20 cap** as a business-level "how many candidates to consider" knob — but see the live-server cap note below before assuming a value above 20 actually reaches the corpus |
 | `asanaTaskSimilarityThreshold` | number | 0–1 | — required | gates **parent task creation** (best raw score across candidate articles; `0` = always create if other checks pass) |
 | `articleSimilarityThreshold` | number | 0–1 | — required | gates **which articles get a recommendation subtask** (per-article raw score) — do not confuse with the field above |
 | `modelId` | string | non-empty | — required | must be an **Amazon Bedrock** model ID or inference profile enabled in the target account/region (see Legacy vs new fields) |
@@ -57,12 +57,35 @@ authors:
   Vercel-hosted reference app. This agent calls Bedrock through the Vercel AI
   SDK, so `modelId` must be a real Bedrock model ID or inference profile
   (e.g. `anthropic.claude-3-5-haiku-20241022-v1:0`), not an AI-gateway string.
-- **`defaultTopK`** bound widened 20 → 100 (see table above).
+- **`defaultTopK`** bound widened 20 → 100 as a config-level knob, but see
+  "`defaultTopK` vs. what the live MCP server actually accepts" below — the
+  live server itself still caps at 20, and the matching module clamps to it.
 - **`dedupeTtlDays`, `backfillHours`, `costCeilingUsdPerRun`,
   `excludedTaskAuthors`** did not exist in the legacy DB-backed schema at all
   — they replace behavior that used to be a mix of hardcoded constants and
   environment variables (`AUTOMATION_AUTO_BACKFILL_WINDOW_HOURS`, a hardcoded
   "skip Soofi's own posts" check, etc.) in the legacy route handler.
+
+### `defaultTopK` vs. what the live MCP server actually accepts (verified discrepancy)
+
+The assignment README's "Required RAG integration" section instructs candidates
+to call `queryInvestorContent` with `topK: 40`. **Verified live against
+`https://investors-mcp.vercel.app/mcp` on 2026-07-06: the deployed server's own
+input schema caps `topK` at 20 and rejects anything higher** — a `topK: 40`
+call returns `isError: true` with a non-JSON body
+(`MCP error -32602: Input validation error: Invalid arguments for tool
+queryInvestorContent`), not the documented JSON match response. This is a real
+discrepancy between the assignment's written example and the deployed system,
+not a misunderstanding on the client side — confirmed by testing `topK: 20`
+(succeeds) immediately followed by `topK: 40` (fails) against the same live
+endpoint.
+
+Consequently: `config/settings.yaml`'s `defaultTopK` bound stays widened to
+1–100 as a business-level knob (an operator's stated preference for how many
+candidates to consider), but `src/matching/get-top-article-similarities.ts`
+clamps the value actually sent to the MCP tool at 20
+(`MCP_SERVER_TOP_K_MAX`) regardless of what's configured. If the live server's
+cap is ever raised, that's a one-constant change, not a schema change.
 
 ### Two thresholds — do not conflate
 

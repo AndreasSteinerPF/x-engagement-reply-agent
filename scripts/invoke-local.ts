@@ -1,18 +1,24 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
+import { createCircuitBreaker } from "../src/mcp/circuit-breaker";
+import { createInvestorMcpClient } from "../src/mcp/investors-mcp-client";
+import { getTopSoofiArticleSimilarities } from "../src/matching/get-top-article-similarities";
 import { classifyInteraction } from "../src/x/interaction";
 import { parsePost } from "../src/x/parse-post";
 import type { RawTweet, RawUser } from "../src/x/types";
 
 /**
  * Local, no-deploy verification harness for the X polling + interaction
- * classification pipeline (Phase 2). Runs entirely against an in-memory
- * fixture -- no real X API credentials, DynamoDB, MCP, LLM, or Asana calls
- * are made from this script yet. Later phases extend this file with
- * --live-mcp, --live-llm, and real state/Asana wiring as those pieces land
- * (see docs/implementation-plan.md, "Testing & local verification").
+ * classification pipeline (Phase 2) and MCP article matching (Phase 3).
+ * By default runs entirely against an in-memory X fixture -- no real X API
+ * credentials, DynamoDB, LLM, or Asana calls are made from this script yet.
+ * Pass --live-mcp to additionally call the real hosted investors-mcp MCP
+ * (public, read-only, no credentials required) with the fixture post text,
+ * so this is safe to run as-is. Later phases add --live-llm and real
+ * Asana wiring (see docs/implementation-plan.md, "Testing & local
+ * verification").
  *
- * Usage: npm run invoke:local -- --author exampleauthor --dry-run
+ * Usage: npm run invoke:local -- --author exampleauthor --dry-run [--live-mcp]
  */
 
 const FIXTURE_AUTHOR: RawUser = { id: "1001", username: "exampleauthor", name: "Example Author" };
@@ -49,11 +55,13 @@ async function main(): Promise<void> {
     options: {
       author: { type: "string" },
       "dry-run": { type: "boolean", default: false },
+      "live-mcp": { type: "boolean", default: false },
     },
   });
 
   const author = values.author ?? FIXTURE_AUTHOR.username;
   const dryRun = values["dry-run"] ?? false;
+  const liveMcp = values["live-mcp"] ?? false;
 
   console.log(
     `[invoke-local] author=${author} dryRun=${dryRun} (fixture data, no live X credentials used)`,
@@ -102,9 +110,27 @@ async function main(): Promise<void> {
     }
   }
 
+  if (liveMcp) {
+    console.log("\n--- Live MCP article match (https://investors-mcp.vercel.app/mcp) ---");
+    const mcpClient = createInvestorMcpClient();
+    const breaker = createCircuitBreaker(3);
+    try {
+      const result = await getTopSoofiArticleSimilarities({
+        mcpClient,
+        breaker,
+        postText: post.text,
+        topK: 40,
+      });
+      console.log(JSON.stringify(result, null, 2));
+    } finally {
+      await mcpClient.close();
+    }
+  }
+
   if (dryRun) {
     console.log(
-      "\n[invoke-local] dry-run: no state writes, no MCP/LLM/Asana calls (not wired until Phase 3-5).",
+      `\n[invoke-local] dry-run: no state writes, no Asana calls (not wired until Phase 5).` +
+        `${liveMcp ? "" : " MCP was not queried (pass --live-mcp to include it)."}`,
     );
   }
 }
