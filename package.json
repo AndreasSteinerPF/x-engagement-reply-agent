@@ -30,11 +30,17 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^5.0.12",
     "@aws-sdk/client-dynamodb": "^3.1079.0",
+    "@aws-sdk/client-secrets-manager": "^3.1079.0",
+    "@aws-sdk/credential-providers": "^3.1079.0",
     "@aws-sdk/lib-dynamodb": "^3.1079.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "ai": "^7.0.16",
     "aws-cdk-lib": "^2.261.0",
     "constructs": "^10.4.2",
+    "langsmith": "^0.7.15",
+    "p-limit": "^7.3.0",
     "yaml": "^2.9.0",
     "zod": "^3.25.76"
   }

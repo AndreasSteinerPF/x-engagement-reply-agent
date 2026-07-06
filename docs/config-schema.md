@@ -49,6 +49,7 @@ authors:
 | `backfillHours` | int | 1–168 | `24` | *(new)* backfill window used only the first time a handle is polled (no cursor yet) |
 | `costCeilingUsdPerRun` | number | > 0 | `5` | *(new)* cost-prediction gate aborts the run above this estimated Bedrock spend |
 | `excludedTaskAuthors` | string[] | — | `[]` | *(new)* authors whose own posts never get an Asana task even if otherwise qualifying |
+| `maxReplyCharacters` | int | 1–2000 | `280` | *(new, Phase 4)* machine-readable mirror of `prompts/constraints.md`'s "Maximum of 280 characters" line — that file is prose for the LLM, this field is what post-generation validation actually enforces |
 
 ### Legacy vs new fields
 

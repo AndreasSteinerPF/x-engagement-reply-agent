@@ -20,6 +20,10 @@ const SettingsFileSchema = z.object({
   backfillHours: z.number().int().min(1).max(168).default(24),
   costCeilingUsdPerRun: z.number().positive().default(5),
   excludedTaskAuthors: z.array(z.string().min(1)).default([]),
+  // Machine-readable mirror of the "Maximum of 280 characters" line in
+  // prompts/constraints.md -- that file is prose for the LLM; this field is
+  // what post-generation validation actually checks against (Phase 4).
+  maxReplyCharacters: z.number().int().min(1).max(2000).default(280),
 });
 
 export type MonitorSettings = z.infer<typeof SettingsFileSchema>;

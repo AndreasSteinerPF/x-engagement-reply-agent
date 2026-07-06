@@ -36,3 +36,8 @@ costCeilingUsdPerRun: 5
 # reference/context purposes).
 excludedTaskAuthors:
   - "Soofi Safavi"
+
+# Machine-readable mirror of prompts/constraints.md's "Maximum of 280
+# characters" line -- prose instructs the LLM, this field is what
+# post-generation validation actually enforces (see docs/config-schema.md).
+maxReplyCharacters: 280

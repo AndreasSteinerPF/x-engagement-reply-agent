@@ -1,24 +1,37 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
+import { createDraftingModel } from "../src/agent/bedrock-model";
+import { generateDraftReplies } from "../src/agent/draft-replies";
+import { loadRuntimeEnv } from "../src/config/env";
+import { loadSettings } from "../src/config/settings";
+import { getTopSoofiArticleSimilarities } from "../src/matching/get-top-article-similarities";
+import type { ArticleSimilarity } from "../src/matching/similarity-gating";
 import { createCircuitBreaker } from "../src/mcp/circuit-breaker";
 import { createInvestorMcpClient } from "../src/mcp/investors-mcp-client";
-import { getTopSoofiArticleSimilarities } from "../src/matching/get-top-article-similarities";
+import { createLangSmithFacade } from "../src/observability/langsmith";
+import { loadPromptSet } from "../src/prompts/load-prompts";
 import { classifyInteraction } from "../src/x/interaction";
 import { parsePost } from "../src/x/parse-post";
 import type { RawTweet, RawUser } from "../src/x/types";
 
 /**
- * Local, no-deploy verification harness for the X polling + interaction
- * classification pipeline (Phase 2) and MCP article matching (Phase 3).
- * By default runs entirely against an in-memory X fixture -- no real X API
- * credentials, DynamoDB, LLM, or Asana calls are made from this script yet.
- * Pass --live-mcp to additionally call the real hosted investors-mcp MCP
- * (public, read-only, no credentials required) with the fixture post text,
- * so this is safe to run as-is. Later phases add --live-llm and real
- * Asana wiring (see docs/implementation-plan.md, "Testing & local
- * verification").
+ * Local, no-deploy verification harness. By default runs entirely against
+ * an in-memory X fixture -- no real X API credentials, DynamoDB, LLM, or
+ * Asana calls are made. Flags progressively opt into real external calls:
  *
- * Usage: npm run invoke:local -- --author exampleauthor --dry-run [--live-mcp]
+ *   --live-mcp   Calls the real hosted investors-mcp MCP (public,
+ *                read-only, no credentials required) with the fixture
+ *                post's text.
+ *   --live-llm   Drafts real replies via Amazon Bedrock (your AWS
+ *                credentials/region) using the real config/prompts/*
+ *                files, traced through LangSmith if LANGSMITH_* env vars
+ *                are set. Uses the --live-mcp match if available, else a
+ *                clearly-labeled synthetic fixture article so this flag
+ *                works standalone. This one costs real (small) money and
+ *                needs your own Bedrock model access -- see
+ *                docs/implementation-plan.md, "Testing & local verification".
+ *
+ * Usage: npm run invoke:local -- --author exampleauthor --dry-run [--live-mcp] [--live-llm]
  */
 
 const FIXTURE_AUTHOR: RawUser = { id: "1001", username: "exampleauthor", name: "Example Author" };
@@ -56,12 +69,14 @@ async function main(): Promise<void> {
       author: { type: "string" },
       "dry-run": { type: "boolean", default: false },
       "live-mcp": { type: "boolean", default: false },
+      "live-llm": { type: "boolean", default: false },
     },
   });
 
   const author = values.author ?? FIXTURE_AUTHOR.username;
   const dryRun = values["dry-run"] ?? false;
   const liveMcp = values["live-mcp"] ?? false;
+  const liveLlm = values["live-llm"] ?? false;
 
   console.log(
     `[invoke-local] author=${author} dryRun=${dryRun} (fixture data, no live X credentials used)`,
@@ -110,6 +125,7 @@ async function main(): Promise<void> {
     }
   }
 
+  let liveMcpMatches: ArticleSimilarity[] = [];
   if (liveMcp) {
     console.log("\n--- Live MCP article match (https://investors-mcp.vercel.app/mcp) ---");
     const mcpClient = createInvestorMcpClient();
@@ -122,15 +138,61 @@ async function main(): Promise<void> {
         topK: 40,
       });
       console.log(JSON.stringify(result, null, 2));
+      if (result.ok) {
+        liveMcpMatches = result.matches;
+      }
     } finally {
       await mcpClient.close();
     }
   }
 
+  if (liveLlm) {
+    console.log("\n--- Live LLM drafting (Amazon Bedrock via Vercel AI SDK) ---");
+    const settings = loadSettings();
+    const promptSet = loadPromptSet();
+    const env = loadRuntimeEnv();
+    const model = createDraftingModel(settings.modelId, env);
+    const langsmith = await createLangSmithFacade(env);
+    const runKey = `invoke-local-${Date.now()}`;
+
+    const articles: ArticleSimilarity[] =
+      liveMcpMatches.length > 0
+        ? liveMcpMatches
+        : [
+            {
+              rawScore: 0.75,
+              score: 75,
+              title: "Synthetic fixture article (no --live-mcp match available)",
+              sourceUri: "https://x.com/i/article/fixture",
+              excerpt: FIXTURE_REFERENCED_ORIGINAL.text,
+              contextExcerpt: FIXTURE_REFERENCED_ORIGINAL.text,
+            },
+          ];
+
+    console.log(`LangSmith tracing enabled: ${langsmith.tracingEnabled}, runKey=${runKey}`);
+    console.log(`modelId=${settings.modelId}, region=${env.AWS_REGION}`);
+
+    const outcomes = await generateDraftReplies({
+      model,
+      langsmith,
+      systemPrompt: promptSet.systemPrompt,
+      constraints: promptSet.constraints,
+      maxReplyCharacters: settings.maxReplyCharacters,
+      post,
+      articles,
+      replySlots: promptSet.replySlots,
+      runKey,
+    });
+
+    console.log(JSON.stringify(outcomes, null, 2));
+    await langsmith.flush();
+  }
+
   if (dryRun) {
+    const skipped = [!liveMcp && "MCP", !liveLlm && "LLM"].filter(Boolean).join("/");
     console.log(
       `\n[invoke-local] dry-run: no state writes, no Asana calls (not wired until Phase 5).` +
-        `${liveMcp ? "" : " MCP was not queried (pass --live-mcp to include it)."}`,
+        (skipped ? ` ${skipped} not queried (pass --live-mcp/--live-llm to include).` : ""),
     );
   }
 }

@@ -47,11 +47,12 @@ describe("loadSettings", () => {
     expect(settings.backfillHours).toBe(24);
     expect(settings.costCeilingUsdPerRun).toBe(5);
     expect(settings.excludedTaskAuthors).toEqual([]);
+    expect(settings.maxReplyCharacters).toBe(280);
   });
 
   it("accepts explicit new-field overrides", () => {
     const filePath = writeSettings(
-      `${VALID_REQUIRED_FIELDS}\ndedupeTtlDays: 30\nbackfillHours: 12\ncostCeilingUsdPerRun: 2.5\nexcludedTaskAuthors:\n  - "Soofi Safavi"\n`,
+      `${VALID_REQUIRED_FIELDS}\ndedupeTtlDays: 30\nbackfillHours: 12\ncostCeilingUsdPerRun: 2.5\nexcludedTaskAuthors:\n  - "Soofi Safavi"\nmaxReplyCharacters: 240\n`,
     );
     const settings = loadSettings(filePath);
 
@@ -59,6 +60,7 @@ describe("loadSettings", () => {
     expect(settings.backfillHours).toBe(12);
     expect(settings.costCeilingUsdPerRun).toBe(2.5);
     expect(settings.excludedTaskAuthors).toEqual(["Soofi Safavi"]);
+    expect(settings.maxReplyCharacters).toBe(240);
   });
 
   it("throws when the file is missing", () => {

@@ -8,3 +8,6 @@ coverage/
 !.env.example
 *.log
 .DS_Store
+
+# Personal learning notes -- never commit
+docs/progress-explained.md
