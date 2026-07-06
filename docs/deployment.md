@@ -1,8 +1,8 @@
 # Deployment
 
-**Status: Phase 0 (scaffold).** This document is filled in progressively as
-each phase in [`implementation-plan.md`](./implementation-plan.md) lands.
-Nothing in this repo is deployed yet.
+**Status: Phase 1 complete (config + prompts).** This document is filled in
+progressively as each phase in [`implementation-plan.md`](./implementation-plan.md)
+lands. Nothing in this repo is deployed yet.
 
 ## Purpose
 
@@ -22,10 +22,14 @@ full user story and acceptance criteria.
 ## Inputs
 
 - `config/watchlist.yaml`, `config/settings.yaml` — version-controlled
-  operational config. *(Not yet implemented — Phase 1.)*
+  operational config, Zod-validated at load time by `src/config/`. Schema
+  documented in [`config-schema.md`](./config-schema.md). **Implemented
+  (Phase 1).** `config/watchlist.yaml` still holds a placeholder author —
+  swap in 3+ real X handles before the Phase 7 demo.
 - `prompts/system.md`, `prompts/constraints.md`, `prompts/replies/*.md` —
-  version-controlled reply-generation instructions. *(Not yet implemented —
-  Phase 1.)*
+  version-controlled reply-generation instructions, loaded by
+  `src/prompts/load-prompts.ts`. **Implemented (Phase 1)** — six reply-prompt
+  slots exist today.
 
 ## Outputs
 
