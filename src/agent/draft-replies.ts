@@ -10,11 +10,19 @@ import { DraftReplySchema, type DraftReply } from "./schemas";
 
 const DEFAULT_CONCURRENCY = 4;
 
+// Field set matches the README's acceptance criterion verbatim: "Produce
+// structured output suitable for Asana subtask creation (prompt label,
+// prompt text, draft reply, why recommended)." promptText is the prompt
+// file's own instructions (slot.content) -- distinct from promptLabel (the
+// heading) and from draft.whyRecommended (the model's own rationale) --
+// included so this outcome is self-contained for Phase 5's Asana subtask
+// notes without the caller re-correlating back to the original slot list.
 export type DraftReplyOutcome =
   | {
       ok: true;
       promptIndex: number;
       promptLabel: string;
+      promptText: string;
       articleSourceUri: string;
       articleTitle: string;
       articleScore: number;
@@ -24,6 +32,7 @@ export type DraftReplyOutcome =
       ok: false;
       promptIndex: number;
       promptLabel: string;
+      promptText: string;
       articleSourceUri: string;
       articleTitle: string;
       articleScore: number;
@@ -136,6 +145,7 @@ export async function generateDraftReply(
   const base = {
     promptIndex: slot.promptIndex,
     promptLabel: slot.promptLabel,
+    promptText: slot.content,
     articleSourceUri: article.sourceUri,
     articleTitle: article.title,
     articleScore: article.score,

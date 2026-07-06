@@ -143,9 +143,25 @@ describe("generateDraftReply", () => {
     if (result.ok) {
       expect(result.draft).toEqual(draft());
       expect(result.promptLabel).toBe(SLOT.promptLabel);
+      expect(result.promptText).toBe(SLOT.content);
       expect(result.articleSourceUri).toBe(ARTICLE.sourceUri);
     }
     expect(generateObject).toHaveBeenCalledTimes(1);
+  });
+
+  it("includes promptText (the prompt file's own instructions) even in a failure placeholder", async () => {
+    const generateObject = vi
+      .fn()
+      .mockResolvedValue({ object: draft({ quotedPhrase: "never said this" }) });
+    const result = await generateDraftReply({
+      ...baseParams,
+      langsmith: fakeLangsmith(generateObject),
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.promptText).toBe(SLOT.content);
+    }
   });
 
   it("retries once with a stricter prompt and succeeds on the second attempt", async () => {
