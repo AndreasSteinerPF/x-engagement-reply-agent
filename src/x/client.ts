@@ -42,6 +42,12 @@ export type XClientOptions = {
 export type FetchRecentPostsOptions = {
   sinceId?: string;
   maxResults?: number;
+  /**
+   * Bounds a first-ever poll (no cursor yet) to recent history instead of a
+   * handle's entire timeline. Ignored by X's API when `sinceId` is also
+   * present -- callers should only pass one or the other.
+   */
+  startTime?: string;
 };
 
 export type XClient = {
@@ -129,6 +135,8 @@ export function createXClient(options: XClientOptions): XClient {
     };
     if (fetchOptions.sinceId) {
       searchParams.since_id = fetchOptions.sinceId;
+    } else if (fetchOptions.startTime) {
+      searchParams.start_time = fetchOptions.startTime;
     }
 
     const data = await request(`/users/${userId}/tweets`, searchParams, TweetsResponseSchema);

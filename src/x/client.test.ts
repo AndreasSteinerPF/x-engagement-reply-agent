@@ -80,6 +80,30 @@ describe("createXClient", () => {
       expect(String(url)).not.toContain("since_id");
     });
 
+    it("passes start_time when provided and there is no cursor", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ data: [], includes: {} }));
+      const client = createXClient({ bearerToken: "test-token", fetchImpl });
+
+      await client.fetchRecentPosts("123", { startTime: "2026-01-01T00:00:00.000Z" });
+
+      const [url] = fetchImpl.mock.calls[0];
+      expect(String(url)).toContain("start_time=2026-01-01T00%3A00%3A00.000Z");
+    });
+
+    it("prefers since_id over start_time when both are provided", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ data: [], includes: {} }));
+      const client = createXClient({ bearerToken: "test-token", fetchImpl });
+
+      await client.fetchRecentPosts("123", {
+        sinceId: "999",
+        startTime: "2026-01-01T00:00:00.000Z",
+      });
+
+      const [url] = fetchImpl.mock.calls[0];
+      expect(String(url)).toContain("since_id=999");
+      expect(String(url)).not.toContain("start_time");
+    });
+
     it("returns posts and includes from the response", async () => {
       const fetchImpl = vi.fn().mockResolvedValue(
         jsonResponse({

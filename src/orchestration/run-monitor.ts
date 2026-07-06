@@ -12,7 +12,7 @@ import type { PromptSet } from "../prompts/load-prompts";
 import { isNewerStatusId, type CursorStore } from "../state/cursor-store";
 import type { DedupeStore } from "../state/dedupe-store";
 import { classifyInteraction } from "../x/interaction";
-import type { XClient } from "../x/client";
+import { XRateLimitError, type XClient } from "../x/client";
 import { parsePost, type ParsedPost } from "../x/parse-post";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 
@@ -29,7 +29,11 @@ export type RunMonitorDeps = {
   promptSet: PromptSet;
   watchlist: WatchedAuthor[];
   runKey: string;
+  /** Injectable for deterministic tests; defaults to the real clock. */
+  now?: () => Date;
 };
+
+const MS_PER_HOUR = 60 * 60 * 1000;
 
 export type PostOutcome = {
   sourceUri: string;
@@ -52,6 +56,13 @@ export type RunSummary = {
   newPostsProcessed: number;
   asanaTasksCreated: number;
   posts: PostOutcome[];
+  /**
+   * Set when the run stopped before reaching every active author -- e.g.
+   * X's rate limit was hit. Since the limit is global, retrying the
+   * remaining authors in the same run would just hit it again immediately;
+   * they're picked up on the next scheduled tick instead.
+   */
+  stoppedEarlyReason?: string;
 };
 
 /**
@@ -76,6 +87,7 @@ export async function runMonitor(deps: RunMonitorDeps): Promise<RunSummary> {
   let asanaTasksCreated = 0;
 
   const activeAuthors = deps.watchlist.filter((author) => author.active);
+  let stoppedEarlyReason: string | undefined;
 
   for (const author of activeAuthors) {
     try {
@@ -83,6 +95,22 @@ export async function runMonitor(deps: RunMonitorDeps): Promise<RunSummary> {
         postsFetched += count;
       });
     } catch (error) {
+      if (error instanceof XRateLimitError) {
+        const resetAt = new Date(error.rateLimit.resetEpochSeconds * 1000).toISOString();
+        posts.push({
+          sourceUri: "",
+          statusId: "",
+          authorHandle: author.handle,
+          outcome: "failed",
+          skipReason: `rate-limited (resets at ${resetAt})`,
+        });
+        // The limit is global to the X API token, not per-author -- trying
+        // the remaining authors this run would just hit it again
+        // immediately. Stop now; they're picked up on the next scheduled
+        // tick instead of generating a cascade of identical failures.
+        stoppedEarlyReason = "rate-limited";
+        break;
+      }
       posts.push({
         sourceUri: "",
         statusId: "",
@@ -105,6 +133,7 @@ export async function runMonitor(deps: RunMonitorDeps): Promise<RunSummary> {
     newPostsProcessed: posts.length,
     asanaTasksCreated,
     posts,
+    ...(stoppedEarlyReason ? { stoppedEarlyReason } : {}),
   };
 }
 
@@ -128,8 +157,15 @@ async function processAuthor(
   }
 
   const cursor = await deps.cursorStore.getCursor(author.handle);
+  // First-ever poll for this handle (no cursor yet) is bounded to a recent
+  // backfill window rather than pulling a handle's entire timeline history.
+  const now = deps.now ?? (() => new Date());
+  const startTime = cursor
+    ? undefined
+    : new Date(now().getTime() - deps.settings.backfillHours * MS_PER_HOUR).toISOString();
   const { posts: rawPosts, includes } = await deps.xClient.fetchRecentPosts(user.id, {
     sinceId: cursor ?? undefined,
+    startTime,
     maxResults: deps.settings.defaultMaxPostsPerAuthor,
   });
   recordFetched(rawPosts.length);

@@ -12,7 +12,7 @@ import type { LangSmithFacade } from "../observability/langsmith";
 import type { PromptSet } from "../prompts/load-prompts";
 import type { CursorStore } from "../state/cursor-store";
 import type { DedupeStore } from "../state/dedupe-store";
-import type { XClient } from "../x/client";
+import { XRateLimitError, type XClient } from "../x/client";
 import type { RawTweet, RawUser } from "../x/types";
 import { runMonitor, type RunMonitorDeps } from "./run-monitor";
 
@@ -349,5 +349,60 @@ describe("runMonitor", () => {
 
     expect(summary.authorsPolled).toBe(0);
     expect(xClient.resolveUserIds).not.toHaveBeenCalled();
+  });
+
+  it("bounds a first-ever poll (no cursor) to backfillHours instead of full history", async () => {
+    const fetchRecentPosts = vi.fn().mockResolvedValue({ posts: [], includes: {} });
+    const xClient = fakeXClient({ fetchRecentPosts });
+    const fixedNow = new Date("2026-01-10T00:00:00.000Z");
+
+    await runMonitor(
+      baseDeps({ xClient, cursorStore: fakeCursorStore(null), now: () => fixedNow }),
+    );
+
+    expect(fetchRecentPosts).toHaveBeenCalledWith(
+      FIXTURE_USER.id,
+      expect.objectContaining({ sinceId: undefined, startTime: "2026-01-09T00:00:00.000Z" }),
+    );
+  });
+
+  it("does not bound by startTime once a cursor already exists", async () => {
+    const fetchRecentPosts = vi.fn().mockResolvedValue({ posts: [], includes: {} });
+    const xClient = fakeXClient({ fetchRecentPosts });
+
+    await runMonitor(baseDeps({ xClient, cursorStore: fakeCursorStore("500") }));
+
+    const options = fetchRecentPosts.mock.calls[0][1] as { sinceId?: string; startTime?: string };
+    expect(options.sinceId).toBe("500");
+    expect(options.startTime).toBeUndefined();
+  });
+
+  it("stops processing remaining authors when X rate-limits the run, without a retry cascade", async () => {
+    const secondAuthor: WatchedAuthor = {
+      ...AUTHOR,
+      handle: "secondauthor",
+      author: "Second Author",
+    };
+    const secondUser: RawUser = { id: "3003", username: "secondauthor", name: "Second Author" };
+    const resolveUserIds = vi.fn().mockImplementation(async (handles: string[]) => {
+      const handle = handles[0]?.toLowerCase();
+      if (handle === "exampleauthor") return new Map([["exampleauthor", FIXTURE_USER]]);
+      if (handle === "secondauthor") return new Map([["secondauthor", secondUser]]);
+      return new Map();
+    });
+    const fetchRecentPosts = vi
+      .fn()
+      .mockRejectedValue(new XRateLimitError({ remaining: 0, resetEpochSeconds: 1_780_000_000 }));
+    const xClient = fakeXClient({ resolveUserIds, fetchRecentPosts });
+
+    const summary = await runMonitor(baseDeps({ xClient, watchlist: [AUTHOR, secondAuthor] }));
+
+    expect(summary.stoppedEarlyReason).toBe("rate-limited");
+    expect(summary.posts).toHaveLength(1);
+    expect(summary.posts[0]).toMatchObject({ authorHandle: "exampleauthor", outcome: "failed" });
+    expect(summary.posts[0].skipReason).toContain("rate-limited");
+    // The second author is never even attempted -- no cascade of identical
+    // rate-limit failures.
+    expect(resolveUserIds).toHaveBeenCalledTimes(1);
   });
 });
