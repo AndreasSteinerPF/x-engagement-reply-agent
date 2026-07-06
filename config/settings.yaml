@@ -1,0 +1,38 @@
+# Automation settings. Schema, bounds, and defaults documented in
+# docs/config-schema.md. Loaded and validated by src/config/settings.ts.
+
+pollIntervalMinutes: 2
+defaultBatchSize: 5
+defaultMaxPostsPerAuthor: 20
+
+# Article-matching topK sent to the hosted MCP queryInvestorContent tool.
+# The assignment's required integration example uses topK: 40, which is why
+# this is no longer capped at the legacy schema's 20 (see docs/config-schema.md).
+defaultTopK: 40
+
+# Parent Asana task gating (0 = always allow if other checks pass).
+asanaTaskSimilarityThreshold: 0
+
+# Article recommendation / subtask gating.
+articleSimilarityThreshold: 0.7
+
+# Must be a Bedrock model ID or inference profile enabled in the target
+# account/region -- NOT a legacy AI-gateway ID like "openai/gpt-4.1-mini"
+# (see docs/config-schema.md, "Legacy vs new fields").
+modelId: "anthropic.claude-3-5-haiku-20241022-v1:0"
+
+# How long processed-post dedupe entries live in DynamoDB before TTL-expiry.
+dedupeTtlDays: 90
+
+# Backfill window used only the first time a handle is polled (no cursor yet).
+backfillHours: 24
+
+# Abort a run rather than exceed this estimated Bedrock spend (see
+# docs/implementation-plan.md, cost-prediction gate).
+costCeilingUsdPerRun: 5
+
+# Authors whose own posts never get an Asana task, even if otherwise
+# qualifying (e.g. the corpus author appearing in the watchlist for
+# reference/context purposes).
+excludedTaskAuthors:
+  - "Soofi Safavi"

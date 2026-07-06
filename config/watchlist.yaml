@@ -1,0 +1,20 @@
+# Watched X authors. TODO(demo): replace with 3+ real X handles before the
+# Phase 7 demo walkthrough (see docs/implementation-plan.md, Phase 7).
+# Schema documented in docs/config-schema.md.
+
+authors:
+  - author: "Example Author"
+    handle: "exampleauthor"
+    company: "example-co"
+    aliases:
+      handles: []
+      authors: []
+    active: true
+
+  - author: "Soofi Safavi"
+    handle: "ssafavi"
+    company: "elephant-xyz"
+    aliases:
+      handles: []
+      authors: []
+    active: true
