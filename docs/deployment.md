@@ -71,7 +71,7 @@ full user story and acceptance criteria.
 |---|---|
 | Hosted MCP (`https://investors-mcp.vercel.app/mcp`, `queryInvestorContent`) | Provided, read-only, no credentials required — verified live (Phase 3) |
 | X API v2 credentials | Candidate-supplied — not yet configured |
-| Asana PAT + sandbox project | Candidate-supplied — not yet configured; code wired (Phase 5), `--live-asana` verified to gracefully fall back to dry-run without credentials |
+| Asana PAT + sandbox project | Candidate-supplied — not yet configured; code wired (Phase 5), `--live-asana` verified to gracefully fall back to dry-run without credentials. Once you have a PAT, run `npm run asana:discover` to list every workspace/project/section/custom-field GID visible to it and get a ready-to-paste env block — Asana's UI doesn't show these GIDs directly. |
 | Amazon Bedrock model access (via Vercel AI SDK) | Candidate-supplied AWS account — code wired and reaches Bedrock (Phase 4), but not yet run against a real model since this sandbox has no AWS credentials |
 | LangSmith account (LLM trace observability) | Candidate-supplied — facade implemented and degrades gracefully without a key (Phase 4), but no real trace has been observed yet |
 

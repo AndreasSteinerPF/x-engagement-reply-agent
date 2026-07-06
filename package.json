@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "build": "cdk synth --strict",
     "deploy": "cdk deploy --require-approval never",
-    "invoke:local": "tsx scripts/invoke-local.ts"
+    "invoke:local": "tsx scripts/invoke-local.ts",
+    "asana:discover": "tsx scripts/asana-discover.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
