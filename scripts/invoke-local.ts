@@ -25,7 +25,7 @@ import { loadPromptSet } from "../src/prompts/load-prompts";
 import type { CursorStore } from "../src/state/cursor-store";
 import type { DedupeStore, MarkProcessedParams } from "../src/state/dedupe-store";
 import { createFileStateStore } from "../src/state/file-state-store";
-import type { XClient } from "../src/x/client";
+import { createXClient, type XClient } from "../src/x/client";
 import type { RawTweet, RawUser } from "../src/x/types";
 
 /**
@@ -36,6 +36,10 @@ import type { RawTweet, RawUser } from "../src/x/types";
  * external calls for the pieces that DO have safe or candidate-supplied
  * credentials available:
  *
+ *   --live-x      Polls the real X API v2 (your X_BEARER_TOKEN) for the
+ *                 given --author instead of the in-memory fixture post.
+ *                 Falls back to the fixture with a clear warning if the
+ *                 token isn't configured.
  *   --live-mcp    Matches against the real hosted investors-mcp MCP
  *                 (public, read-only, no credentials required).
  *   --live-llm    Drafts real replies via Amazon Bedrock (your AWS
@@ -60,7 +64,7 @@ import type { RawTweet, RawUser } from "../src/x/types";
  * Cursor/dedupe state defaults to in-memory and fresh per invocation --
  * this script never touches real DynamoDB, so it's always safe to re-run.
  *
- * Usage: npm run invoke:local -- --author exampleauthor --dry-run [--live-mcp] [--live-llm] [--live-asana] [--persist] [--reset]
+ * Usage: npm run invoke:local -- --author exampleauthor --dry-run [--live-x] [--live-mcp] [--live-llm] [--live-asana] [--persist] [--reset]
  */
 
 const FIXTURE_AUTHOR: RawUser = { id: "1001", username: "exampleauthor", name: "Example Author" };
@@ -213,6 +217,7 @@ async function main(): Promise<void> {
     options: {
       author: { type: "string" },
       "dry-run": { type: "boolean", default: false },
+      "live-x": { type: "boolean", default: false },
       "live-mcp": { type: "boolean", default: false },
       "live-llm": { type: "boolean", default: false },
       "live-asana": { type: "boolean", default: false },
@@ -223,6 +228,7 @@ async function main(): Promise<void> {
 
   const author = values.author ?? FIXTURE_AUTHOR.username;
   const dryRun = values["dry-run"] ?? false;
+  const liveX = values["live-x"] ?? false;
   const liveMcp = values["live-mcp"] ?? false;
   const liveLlm = values["live-llm"] ?? false;
   const liveAsana = values["live-asana"] ?? false;
@@ -230,7 +236,7 @@ async function main(): Promise<void> {
   const reset = values.reset ?? false;
 
   console.log(
-    `[invoke-local] author=${author} dryRun=${dryRun} liveMcp=${liveMcp} liveLlm=${liveLlm} liveAsana=${liveAsana} persist=${persist}`,
+    `[invoke-local] author=${author} dryRun=${dryRun} liveX=${liveX} liveMcp=${liveMcp} liveLlm=${liveLlm} liveAsana=${liveAsana} persist=${persist}`,
   );
 
   const settings = loadSettings();
@@ -244,10 +250,23 @@ async function main(): Promise<void> {
     return;
   }
   // Only the "exampleauthor" fixture has X data wired up below; other
-  // watchlist entries will correctly resolve to a "user-not-found" outcome.
+  // watchlist entries will correctly resolve to a "user-not-found" outcome
+  // unless --live-x is set.
   watchlist[0] = { ...watchlist[0], active: true };
 
-  const xClient = createFixtureXClient();
+  const env = loadRuntimeEnv();
+  let xClient: XClient;
+  if (liveX && env.X_BEARER_TOKEN) {
+    xClient = createXClient({ bearerToken: env.X_BEARER_TOKEN });
+    console.log(`[invoke-local] X: live (polling @${author} via api.twitter.com)`);
+  } else {
+    if (liveX) {
+      console.log(
+        "[invoke-local] --live-x requested but X_BEARER_TOKEN is not set -- falling back to the fixture post.",
+      );
+    }
+    xClient = createFixtureXClient();
+  }
   const breaker = createCircuitBreaker(3);
 
   let cursorStore: CursorStore;
@@ -272,7 +291,6 @@ async function main(): Promise<void> {
   const mcpClient = liveMcp ? createInvestorMcpClient() : createFixtureMcpClient();
   if (liveMcp) console.log("[invoke-local] MCP: live (https://investors-mcp.vercel.app/mcp)");
 
-  const env = loadRuntimeEnv();
   const model = liveLlm ? createDraftingModel(settings.modelId, env) : ({} as never);
   const langsmith = liveLlm ? await createLangSmithFacade(env) : createFixtureLangsmith();
   if (liveLlm) {

@@ -29,9 +29,11 @@ full user story and acceptance criteria.
   `pollIntervalMinutes`. *(Not yet wired — Phase 6.)*
 - **Manual/local:** `scripts/invoke-local.ts` for dry-run/single-author
   verification without deploying. **Fully implemented** — calls the real
-  `runMonitor()` orchestrator with X always fixture-backed (no candidate X
-  credentials exist yet) and MCP/Bedrock/Asana each independently real when
-  their flag is passed. `--persist` backs cursor/dedupe state with a local
+  `runMonitor()` orchestrator with X/MCP/Bedrock/Asana each independently
+  real when its flag (`--live-x`/`--live-mcp`/`--live-llm`/`--live-asana`)
+  is passed, falling back to an in-memory fixture per dependency when the
+  flag is omitted or its credentials aren't configured. `--persist` backs
+  cursor/dedupe state with a local
   JSON file instead of an in-memory `Map`, so running the script twice in a
   row provably skips the second time — the one demo scenario that otherwise
   needed a real DynamoDB table to verify. `--force-retask` (bypassing dedupe
