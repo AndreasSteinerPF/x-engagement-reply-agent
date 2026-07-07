@@ -21,6 +21,11 @@ const PROJECT_NAME = "x-engagement-reply-agent";
 const ASANA_ACCESS_TOKEN_SECRET_NAME = `${PROJECT_NAME}/asana-access-token`;
 const X_BEARER_TOKEN_SECRET_NAME = `${PROJECT_NAME}/x-bearer-token`;
 const LANGSMITH_API_KEY_SECRET_NAME = `${PROJECT_NAME}/langsmith-api-key`;
+// Distinct from the three above: this one is *meant* to be shared with an
+// evaluator (it gates src/http-handler.ts's Function URL, not a candidate
+// credential), so its value is documented directly in docs/deployment.md
+// rather than kept private.
+const EVALUATOR_API_KEY_SECRET_NAME = `${PROJECT_NAME}/evaluator-api-key`;
 
 /**
  * Builds the Lambda's plaintext environment variables from process.env
@@ -132,10 +137,42 @@ export class XEngagementReplyAgentStack extends cdk.Stack {
       "LangsmithApiKeySecret",
       LANGSMITH_API_KEY_SECRET_NAME,
     );
+    const evaluatorApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "EvaluatorApiKeySecret",
+      EVALUATOR_API_KEY_SECRET_NAME,
+    );
 
     const runtimeEnv = loadRuntimeEnv(process.env);
 
     const copyAssetsScript = path.join(__dirname, "..", "scripts", "copy-lambda-assets.ts");
+
+    // Shared by both Lambdas below -- config/*.yaml and prompts/**/*.md are
+    // read from disk at runtime (src/config/watchlist.ts, settings.ts,
+    // src/prompts/load-prompts.ts all default to `process.cwd()`, the
+    // Lambda package root), so NodejsFunction's default JS-only bundling
+    // has to be supplemented with an explicit copy step. See
+    // scripts/copy-lambda-assets.ts for why this uses a script (via `npx
+    // tsx`) rather than a raw `cp -r` shell command (Windows local
+    // bundling has no `cp`).
+    const assetBundling: lambda.NodejsFunctionProps["bundling"] = {
+      commandHooks: {
+        beforeBundling: () => [],
+        beforeInstall: () => [],
+        afterBundling: (inputDir, outputDir) => [
+          `npx tsx "${copyAssetsScript}" "${path.join(inputDir, "config")}" "${path.join(outputDir, "config")}"`,
+          `npx tsx "${copyAssetsScript}" "${path.join(inputDir, "prompts")}" "${path.join(outputDir, "prompts")}"`,
+        ],
+      },
+    };
+
+    const sharedEnvironment = {
+      STATE_TABLE_NAME: stateTable.tableName,
+      ASANA_ACCESS_TOKEN_SECRET_ARN: asanaAccessTokenSecret.secretArn,
+      X_BEARER_TOKEN_SECRET_ARN: xBearerTokenSecret.secretArn,
+      LANGSMITH_API_KEY_SECRET_ARN: langsmithApiKeySecret.secretArn,
+      ...nonSecretEnvironment(runtimeEnv),
+    };
 
     const monitorHandler = new lambda.NodejsFunction(this, "MonitorHandler", {
       functionName: `${PROJECT_NAME}-monitor`,
@@ -145,31 +182,8 @@ export class XEngagementReplyAgentStack extends cdk.Stack {
       timeout: cdk.Duration.minutes(5),
       tracing: cdk.aws_lambda.Tracing.ACTIVE,
       logGroup: monitorLogGroup,
-      environment: {
-        STATE_TABLE_NAME: stateTable.tableName,
-        ASANA_ACCESS_TOKEN_SECRET_ARN: asanaAccessTokenSecret.secretArn,
-        X_BEARER_TOKEN_SECRET_ARN: xBearerTokenSecret.secretArn,
-        LANGSMITH_API_KEY_SECRET_ARN: langsmithApiKeySecret.secretArn,
-        ...nonSecretEnvironment(runtimeEnv),
-      },
-      // NodejsFunction only bundles imported JS by default -- config/*.yaml
-      // and prompts/**/*.md are read from disk at runtime
-      // (src/config/watchlist.ts, src/config/settings.ts,
-      // src/prompts/load-prompts.ts all default to `process.cwd()`, which is
-      // the Lambda package root, `/var/task`), so they have to be copied
-      // into the bundle explicitly. See scripts/copy-lambda-assets.ts for
-      // why this uses a script (via `npx tsx`) rather than a raw `cp -r`
-      // shell command (Windows local bundling has no `cp`).
-      bundling: {
-        commandHooks: {
-          beforeBundling: () => [],
-          beforeInstall: () => [],
-          afterBundling: (inputDir, outputDir) => [
-            `npx tsx "${copyAssetsScript}" "${path.join(inputDir, "config")}" "${path.join(outputDir, "config")}"`,
-            `npx tsx "${copyAssetsScript}" "${path.join(inputDir, "prompts")}" "${path.join(outputDir, "prompts")}"`,
-          ],
-        },
-      },
+      environment: sharedEnvironment,
+      bundling: assetBundling,
     });
 
     stateTable.grantReadWriteData(monitorHandler);
@@ -184,6 +198,62 @@ export class XEngagementReplyAgentStack extends cdk.Stack {
         resources: bedrockModelInvokeArns(this, settings.modelId),
       }),
     );
+
+    // Evaluator/on-demand trigger: an API-key-gated Function URL fronting
+    // the same pipeline (via src/handler.ts's runHandlerCore, shared with
+    // the EventBridge-scheduled monitorHandler above). Deliberately a
+    // rotatable API key rather than handing out scoped IAM credentials --
+    // easier to revoke, no AWS CLI setup needed on the caller's end, and a
+    // smaller trust surface than a standing identity inside this account.
+    // See docs/deployment.md for the exact key value and usage.
+    const httpTriggerLogGroup = new logs.LogGroup(this, "HttpTriggerLogGroup", {
+      logGroupName: `/aws/lambda/${PROJECT_NAME}-http-trigger`,
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const httpTriggerHandler = new lambda.NodejsFunction(this, "HttpTriggerHandler", {
+      functionName: `${PROJECT_NAME}-http-trigger`,
+      entry: path.join(__dirname, "..", "src", "http-handler.ts"),
+      handler: "httpHandler",
+      runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
+      timeout: cdk.Duration.minutes(5),
+      tracing: cdk.aws_lambda.Tracing.ACTIVE,
+      logGroup: httpTriggerLogGroup,
+      environment: {
+        ...sharedEnvironment,
+        EVALUATOR_API_KEY_SECRET_ARN: evaluatorApiKeySecret.secretArn,
+      },
+      bundling: assetBundling,
+    });
+
+    stateTable.grantReadWriteData(httpTriggerHandler);
+    asanaAccessTokenSecret.grantRead(httpTriggerHandler);
+    xBearerTokenSecret.grantRead(httpTriggerHandler);
+    langsmithApiKeySecret.grantRead(httpTriggerHandler);
+    evaluatorApiKeySecret.grantRead(httpTriggerHandler);
+    httpTriggerHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock:InvokeModel"],
+        resources: bedrockModelInvokeArns(this, settings.modelId),
+      }),
+    );
+
+    const httpTriggerUrl = httpTriggerHandler.addFunctionUrl({
+      authType: cdk.aws_lambda.FunctionUrlAuthType.NONE,
+      cors: {
+        allowedOrigins: ["*"],
+        allowedHeaders: ["content-type", "x-api-key"],
+        allowedMethods: [cdk.aws_lambda.HttpMethod.GET, cdk.aws_lambda.HttpMethod.POST],
+      },
+    });
+
+    new cdk.CfnOutput(this, "HttpTriggerUrl", {
+      value: httpTriggerUrl.url,
+      description:
+        "Evaluator on-demand trigger. POST here with header x-api-key: <see docs/deployment.md>. " +
+        "Add ?dryRun=false to create real Asana tasks; defaults to a safe dry run.",
+    });
 
     // Catches failed *invocations* of the schedule's target (e.g. the
     // Scheduler service itself couldn't call the Lambda after retries --

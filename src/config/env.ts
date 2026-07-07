@@ -43,6 +43,13 @@ const RuntimeEnvSchema = z.object({
   X_BEARER_TOKEN: z.string().optional(),
   X_BEARER_TOKEN_SECRET_ARN: z.string().optional(),
   STATE_TABLE_NAME: z.string().optional(),
+
+  // Gates src/http-handler.ts's Function URL (an evaluator-facing on-demand
+  // trigger, distinct from the EventBridge-scheduled `handler`) -- callers
+  // must send this value back as the `x-api-key` header. Deliberately has
+  // no plain-value fallback: this key is only ever meant to live in
+  // Secrets Manager, never in a local .env file.
+  EVALUATOR_API_KEY_SECRET_ARN: z.string().optional(),
 });
 
 export type RuntimeEnv = z.infer<typeof RuntimeEnvSchema>;

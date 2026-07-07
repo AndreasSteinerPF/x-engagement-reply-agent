@@ -55,17 +55,19 @@ function emptySummary(runKey: string, dryRun: boolean): RunSummary {
 }
 
 /**
- * The real Lambda entrypoint: constructs every real client/store from
- * config and environment, then delegates to runMonitor. A critical failure
- * (an error escaping runMonitor entirely) pages on-call via
- * notifyCriticalFailure -- structurally wired now, pointed at a TODO for
- * the real PagerDuty Events API v2 call. Cost-prediction gate,
- * Powertools-based structured logging (beyond the minimal
- * src/observability/logger.ts stub), and the EventBridge Scheduler trigger
- * itself still land in Phase 6.
+ * Constructs every real client/store from config and environment, then
+ * delegates to runMonitor -- the shared core behind both Lambda entry
+ * points: `handler` (EventBridge Schedule target, takes a plain
+ * `{dryRun}` event) and `httpHandler` (src/http-handler.ts, the
+ * API-key-gated Function URL for evaluator/on-demand triggering, which
+ * parses `dryRun` out of an HTTP request). A critical failure (an error
+ * escaping runMonitor entirely) pages on-call via notifyCriticalFailure --
+ * structurally wired now, pointed at a TODO for the real PagerDuty Events
+ * API v2 call. Cost-prediction gate and Powertools-based structured
+ * logging (beyond the minimal src/observability/logger.ts stub) remain
+ * deferred.
  */
-export async function handler(event: HandlerEvent = {}): Promise<RunSummary> {
-  const dryRun = event.dryRun ?? false;
+export async function runHandlerCore(dryRun: boolean): Promise<RunSummary> {
   const runKey = `${new Date().toISOString()}-${Math.random().toString(36).slice(2, 10)}`;
 
   const env = loadRuntimeEnv();
@@ -173,4 +175,9 @@ export async function handler(event: HandlerEvent = {}): Promise<RunSummary> {
       await runLock.releaseLock(runKey);
     }
   }
+}
+
+/** EventBridge Schedule target -- see runHandlerCore for the real logic. */
+export async function handler(event: HandlerEvent = {}): Promise<RunSummary> {
+  return runHandlerCore(event.dryRun ?? false);
 }
