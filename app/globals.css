@@ -15,6 +15,7 @@ body {
 }
 
 body {
+  font-size: 15px;
   background-image: radial-gradient(900px 500px at 12% -8%, rgba(232, 168, 56, 0.14), transparent 60%),
     radial-gradient(800px 500px at 100% 0%, rgba(201, 122, 74, 0.10), transparent 55%);
   background-attachment: fixed;
@@ -24,7 +25,16 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-xl border border-amber-400/10 bg-white/[0.03] backdrop-blur-sm;
+    @apply rounded-lg border bg-white/[0.02];
+    border-color: rgba(232, 168, 56, 0.08);
+  }
+  .card-elevated {
+    @apply rounded-lg border bg-white/[0.04] shadow-lg shadow-black/20;
+    border-color: rgba(232, 168, 56, 0.12);
+  }
+  .card-compact {
+    @apply rounded-md border bg-white/[0.015] px-3 py-2;
+    border-color: rgba(232, 168, 56, 0.08);
   }
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40;
@@ -36,7 +46,7 @@ body {
     @apply btn border border-amber-400/15 text-stone-200 hover:bg-amber-400/5;
   }
   .label {
-    @apply text-[11px] font-medium uppercase tracking-wider text-stone-400;
+    @apply text-xs font-semibold uppercase tracking-wider text-stone-400;
   }
   .chip {
     @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium;
@@ -46,11 +56,33 @@ body {
   }
 }
 
+/* Top accent line on elevated cards */
+.card-elevated {
+  position: relative;
+}
+.card-elevated::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(232,168,56,0.4), transparent);
+  border-radius: 8px 8px 0 0;
+}
+
+/* Top loading progress bar */
+@keyframes scan-progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.scan-progress-bar {
+  animation: scan-progress 1.4s ease-in-out infinite;
+}
+
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(232,168,56,0.15);
-  border-radius: 6px;
+  background: rgba(232,168,56,0.12);
+  border-radius: 3px;
 }
