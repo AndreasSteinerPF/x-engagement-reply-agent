@@ -1,11 +1,17 @@
 # Deployment
 
-**Status: Phase 5 complete (full pipeline verified live end-to-end against
-real external systems), and Phase 6 (deployment) is built — CDK stack synths
-cleanly with the real Lambda, DynamoDB table, Secrets Manager references,
-Bedrock IAM, and EventBridge Schedule (disabled by default) — but not yet
-actually deployed to AWS.** This document is filled in progressively as each
-phase in [`implementation-plan.md`](./implementation-plan.md) lands.
+**Status: Phase 5 and Phase 6 both complete — the full pipeline is deployed
+to AWS and verified live, both locally (`invoke-local.ts`) and as the actual
+deployed Lambda.** `XEngagementReplyAgentStack` is live in account
+`293406302954` (`us-east-2`): DynamoDB state table, the monitor Lambda,
+Secrets Manager references, Bedrock IAM, and an EventBridge Schedule
+(deliberately left `DISABLED` — see below) with a DLQ + alarm. Verified via
+`npm run demo:trigger` invoking the real deployed Lambda directly: correctly
+polled a 5-author batch, made real X API calls (15 real posts fetched from
+one account), and correctly suppressed Asana writes under `dryRun: true` —
+real, live, end-to-end proof the deployment actually works, not just that it
+synths cleanly. This document is filled in progressively as each phase in
+[`implementation-plan.md`](./implementation-plan.md) lands.
 `scripts/invoke-local.ts` calls the real `runMonitor()` orchestrator (the
 same function `handler.ts` uses in Lambda), and every dependency has now
 been exercised live:
@@ -203,6 +209,13 @@ for why that's not wired here.
    Flips the `AWS::Scheduler::Schedule`'s state to `ENABLED`, so it starts
    firing every `pollIntervalMinutes` (`1440` by default) on its own. Redeploy
    without that variable set to disable it again.
+
+**Done as of 2026-07-07** — steps 1–6 above have been carried out for real
+against the candidate's own AWS account: `cdk bootstrap` completed, all
+three secrets created, `XEngagementReplyAgentStack` deployed (14 resources),
+and verified live via `npm run demo:trigger`. The schedule remains
+`DISABLED` (step 7 not yet taken) — nothing polls automatically until that's
+deliberately enabled.
 
 ## CI/CD note (`integrate-ci-cd` gap)
 
