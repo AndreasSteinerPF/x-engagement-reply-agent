@@ -1,0 +1,31 @@
+{
+  "handle": "balajis",
+  "author": "Balaji Srinivasan",
+  "posts": [
+    {
+      "statusId": "1801000000000000010",
+      "header": "Property records belong on-chain",
+      "text": "Property records still live in county silos that nobody can verify. Put ownership, liens, and title history on-chain and truth becomes programmable. Verifiable property data is the foundation for a real on-chain economy of physical assets.",
+      "kind": "post",
+      "createdAt": "2026-06-18T15:10:00Z"
+    },
+    {
+      "statusId": "1801000000000000012",
+      "header": "Quoting: county record fraud thread",
+      "text": "This is exactly why we need privacy-first property tokenization. The fix is separating the digital identity of an asset from the physical owner, not exposing county records to the whole world.",
+      "kind": "quote",
+      "createdAt": "2026-06-18T16:40:00Z",
+      "references": [
+        {
+          "handle": "propertywonk",
+          "author": "Property Wonk",
+          "statusId": "1800999000000000001",
+          "header": "County deed fraud is rampant",
+          "text": "Deed and title fraud keeps happening because county property records are siloed and forgeable. We need a verifiable, on-chain chain of ownership for every home, so title history and liens become programmable truth instead of a clerk's paper promise.",
+          "kind": "post",
+          "createdAt": "2026-06-18T16:20:00Z"
+        }
+      ]
+    }
+  ]
+}

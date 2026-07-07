@@ -1,0 +1,20 @@
+{
+  "posts": [
+    {
+      "statusId": "1801000000000000300",
+      "text": "Software is eating the world, and property records are next. County registries are a 19th-century solution to a 21st-century problem. On-chain ownership data is verifiable, programmable, and globally accessible.",
+      "kind": "post",
+      "header": "Software eating property records",
+      "createdAt": "2026-07-07T08:00:00Z"
+    },
+    {
+      "statusId": "1801000000000000301",
+      "text": "The best founders don't optimize for funding, they optimize for attention. Build something people want and the capital follows.",
+      "kind": "post",
+      "header": "Venture capital and attention",
+      "createdAt": "2026-07-07T14:00:00Z"
+    }
+  ],
+  "handle": "pmarca",
+  "author": "Marc Andreessen"
+}

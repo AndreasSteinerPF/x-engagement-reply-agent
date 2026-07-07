@@ -1,0 +1,13 @@
+{
+  "handle": "punk6529",
+  "author": "6529",
+  "posts": [
+    {
+      "statusId": "1801000000000000020",
+      "header": "Self-custody for real-world assets",
+      "text": "Self-custody is not just for tokens. If you cannot independently verify who owns a house, you do not really have property rights, you have a clerk's promise. On-chain, verifiable ownership records change that for physical assets too.",
+      "kind": "post",
+      "createdAt": "2026-06-18T14:05:00Z"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "name": "x-engagement-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kestrel — standalone X Engagement Reply Agent. Polls watched X authors, matches posts against Soofi article content via the investors-mcp MCP, drafts prompt-driven recommended replies, and creates Asana approval tasks.",
+  "type": "module",
+  "bin": {
+    "x-engagement-agent": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "dev": "tsx watch src/cli.ts",
+    "run-once": "tsx src/cli.ts run",
+    "dry-run": "tsx src/cli.ts run --dry-run",
+    "loop": "tsx src/cli.ts loop",
+    "web:dev": "next dev -p 3200",
+    "web:build": "next build",
+    "web:start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@agent-network/contract": "file:./vendor/agent-contract",
+    "next": "^14.2.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "yaml": "^2.5.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

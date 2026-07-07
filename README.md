@@ -1,200 +1,120 @@
-# X Engagement Reply Agent
+# X Engagement Reply Agent — `kestrel`
 
-Targeted Author X Polling, Engagement Detection, and Recommended Reply Workflow
+A standalone, code-managed agent that polls watched X authors, matches their posts against Soofi Safavi article content via the hosted **investors-mcp** MCP, drafts prompt-driven recommended replies, and prepares **Asana approval tasks** for a human to review and post. It never posts to X autonomously — every reply is a pending approval gate.
 
-## Context
+> **Submission — Andreas Steiner ([@AndreasSteinerPF](https://github.com/AndreasSteinerPF))**
+>
+> | | |
+> |---|---|
+> | **Live runtime** | **https://x-engagement-reply-agent-clean.vercel.app** — open it, pick an author, press ▶ Run agent (no login) |
+> | **Demo video** | _added before final submission_ |
+> | **Assignment / user story** | [ASSIGNMENT.md](./ASSIGNMENT.md) (the provided brief, preserved verbatim) |
+> | **Repository** | [AndreasSteinerPF/x-engagement-reply-agent](https://github.com/AndreasSteinerPF/x-engagement-reply-agent) |
+>
+> The live runtime is **credential-free**: open it, pick a watched author, and press **▶ Run agent**. It polls the author, matches each post against the Soofi corpus via the **real** hosted MCP, drafts one reply per code-managed prompt file, and shows the would-be Asana approval tasks (with one-click X compose links) — no login, no setup.
 
-Elephant's internal **investors-mcp** application currently implements a production workflow that polls targeted X authors for new posts, ingests posts into a knowledge corpus, compares each post against Soofi Safavi article content using semantic similarity, drafts recommended X replies, and creates Asana approval tasks for a human operator to review and post manually.
+## Why it's different from the reference
 
-That workflow is embedded in a monolithic application. Operational behavior — watched authors, similarity thresholds, draft prompts, response constraints, and model selection — is managed through an admin dashboard and persistent storage rather than version-controlled configuration. Prompt evolution (adding a fifth or sixth reply variant, changing tone, or adjusting constraints) requires dashboard edits or database changes instead of pull-request review.
+The investors-mcp reference pipeline manages watched authors, thresholds, model selection, and prompts through an admin dashboard and a database. This agent moves **all** of that into version-controlled files — the entire operational surface is code. Adding a fifth or sixth reply variant is a new Markdown file, reviewed in a PR, with no migration and no UI.
 
-The soofi.xyz agent ecosystem defines reusable agent patterns through the [Soofi XYZ Team Kit](https://github.com/soofi-xyz/soofi-xyz-team-kit), including code-managed prompts, observability, and integration conventions. This milestone extracts the investors-mcp targeted-author polling and recommended-reply pipeline into a standalone agent that fits that architecture and can be registered in the future Agent Network.
+## Hosted runtime (browser)
 
-## Description
+The deployed app (`app/`, Next.js) is a thin presentation layer over the exact same pipeline the CLI runs:
 
-Create an **X Engagement Reply Agent** that continuously monitors a configured set of X authors, detects new posts and relevant engagement opportunities (including replies and quoted posts to referenced originals), optionally ingests content into the investor knowledge layer, matches posts against Soofi article content, generates multiple recommended reply drafts from version-controlled prompt files, and creates Asana parent tasks and approval subtasks for human review and posting.
+- **▶ Run agent** with a **dry-run** toggle and a watched-author selector.
+- Renders, for each detected post: the **Soofi article matches with real similarity scores**, one **drafted reply per prompt file** (grounded, ≤280 chars, with the X compose link and char count), the **would-be Asana parent + approval subtasks**, the **run-summary metrics**, and the **LLM traces**.
+- Server-renders the **code-managed configuration** (watchlist, thresholds, prompt slots) so it's clear nothing comes from an admin UI or database.
 
-The agent must replace dashboard- and database-managed configuration with **code-managed configuration** (structured config files and Markdown prompt files). Operators should evolve reply behavior — tone, count, constraints, and prompt instructions — by editing files in the repository and redeploying, without requiring admin UI changes.
+`POST /api/run` is the same endpoint the Agent Network Platform calls for its **"Run agent"** action (the A→B integration): it returns `{ summary, artifact, asana, traces }`, and the platform ingests the run summary into its registry + network metrics.
 
-The agent must preserve the current operational outcomes of investors-mcp:
+Run the web runtime locally:
 
-- **X integration (polling):** scheduled polling of watched authors, new-post detection, referenced-post enrichment, and deduplication of already-processed posts
-- **Asana integration (tasking):** parent task creation for each qualifying post, article-recommendation approval subtasks per reply prompt, similarity metadata, threshold-based assignee rules, and X compose intent links in task notes
-
-## Acceptance Criteria
-
-### Agent architecture
-
-- Implement the agent as a standalone, deployable unit aligned with conventions in [soofi-xyz-team-kit](https://github.com/soofi-xyz/soofi-xyz-team-kit).
-- Run the polling pipeline on a configurable schedule.
-- Persist runtime state externally for polling cursors, processed-post dedupe keys, and run summaries.
-- Generate recommended replies using a language model with observable, traceable LLM runs.
-- Document agent purpose, triggers, inputs, outputs, dependencies, and deployment steps.
-- Preserve compatibility with future Agent Network registration and certification workflows.
-
-### Code-managed configuration
-
-- Move watched-author definitions from admin/database storage to version-controlled config, including author name, handle, company, aliases, and active flag.
-- Move automation settings (poll interval, batch size, max posts per author, similarity thresholds, model selection) to version-controlled config.
-- Move all reply-generation instructions to Markdown prompt files, including:
-  - system prompt
-  - global response constraints
-  - one file per reply slot/prompt (not limited to four slots)
-- Support adding, removing, or reordering reply prompts by editing prompt files only — no database migration or admin UI required.
-- Remove dependency on the investors-mcp admin UI for normal agent operation.
-- Document the config and prompt file schema.
-
-### X integration — polling and engagement detection
-
-- Poll configured X authors on a schedule and detect posts newer than the last-seen cursor per handle.
-- Support batching across the watchlist using configurable batch size and cursor rotation.
-- Detect and process referenced originals when a watched author replies to or quotes another post.
-- Enrich long-form X article content where available.
-- Deduplicate already-processed posts by source URI and status ID.
-- Record per-post processing outcomes (ingested, skipped, tasked, failed) in persistent state.
-- Support dry-run mode that executes the pipeline without knowledge-base writes or Asana task creation.
-
-### Knowledge retrieval and article matching
-
-- Integrate with the hosted investors-mcp MCP (`queryInvestorContent`) for article matching; do not use direct vector-store or blob credentials.
-- Compare each new post against Soofi Safavi article content using semantic similarity.
-- Apply configurable thresholds for:
-  - parent Asana task creation (best-match raw similarity)
-  - article recommendation and subtask generation (per-article raw similarity)
-- Return top matched articles with similarity scores and supporting excerpts or passages.
-- Preserve source provenance (source URI, article title, similarity score) in downstream outputs.
-
-### Recommended reply generation (prompt-driven)
-
-- Generate one recommended X reply per configured prompt file for each threshold-qualified matched article.
-- Load prompt instructions, tones, and constraints from Markdown files.
-- Support at least six reply prompt slots through prompt files without code changes.
-- Enforce configurable response constraints (character limits, voice, formatting rules) from prompt and config files.
-- Ground each reply in matched article content; include a quoted phrase from the article context.
-- End each reply with a thought-provoking question unless a prompt file explicitly overrides that behavior.
-- Produce structured output suitable for Asana subtask creation (prompt label, prompt text, draft reply, why recommended).
-
-### Asana integration — task creation for posting workflow
-
-- Create a parent Asana task for each qualifying post with source post metadata, thresholds applied, and top article matches.
-- Create one approval subtask per `(matched article × reply prompt)` with draft reply text and an X compose intent link.
-- Support configurable Asana project, section, workspace, default assignee, and threshold-based assignee override.
-- Set parent task due date to today when threshold-based assignee rules apply.
-- Write similarity score custom fields on parent and subtasks when configured.
-- Dedupe Asana task creation for posts already tasked in prior runs.
-- Skip task creation for excluded authors (for example the corpus author's own posts).
-
-### Observability, operations, and documentation
-
-- Emit structured run summaries including authors polled, posts fetched, new posts processed, ingest counts, Asana tasks created, and skip/failure reasons.
-- Support local or isolated testing against a single author or post without side effects.
-- Document deployment steps and required credentials or configuration.
-
-### Out of scope for this milestone
-
-- Automated posting or replying directly to X without human approval.
-- Replacing the investors-mcp knowledge platform entirely (the agent may consume it as a dependency).
-- Agent Network marketplace publication (prepare for registration only).
-- Admin dashboard parity with investors-mcp reporting UI.
-
-## Demo Requirements
-
-- Deliver a live demonstration using a configured watchlist of at least three real X authors.
-- Demonstrate scheduled polling detecting a new post from a watched author.
-- Demonstrate referenced-post handling when a watched author replies to or quotes another post.
-- Demonstrate article similarity matching against Soofi content with visible similarity scores.
-- Demonstrate generation of multiple recommended replies from distinct prompt Markdown files (minimum five prompts configured in the demo).
-- Demonstrate adding a sixth reply prompt by editing a prompt file, redeploying, and showing the new reply variant on a subsequent run.
-- Demonstrate Asana parent task creation with source post metadata and similarity notes.
-- Demonstrate Asana approval subtasks containing draft replies and X compose links.
-- Demonstrate threshold-based parent-task assignee behavior and due-date assignment.
-- Demonstrate dry-run mode producing the same matching and draft outputs without creating Asana tasks.
-- Demonstrate traceability of LLM reply-generation runs.
-- Demonstrate that watched authors, thresholds, and prompts are loaded from code-managed config files — not from an admin UI or database settings.
-
-## Required Demo Scenarios
-
-- Poll watched authors and process one newly detected post end to end.
-- Show a post that meets the article recommendation threshold receiving multiple reply subtasks (one per prompt file).
-- Show a post that does not meet the recommendation threshold creating no reply subtasks (or skipping parent task creation when task threshold is configured).
-- Edit a prompt Markdown file to change reply tone and show the updated draft on the next run.
-- Add a new prompt file (5th or 6th reply slot) and show an additional subtask created for the same matched article.
-- Open an Asana approval subtask and use the embedded X compose link to preview the drafted reply.
-- Run dry-run mode for a single author and review structured output without side effects.
-
-## Definition of Done
-
-This milestone is complete when the X Engagement Reply Agent loads all operational configuration and prompts from version-controlled files, polls X for targeted authors on a schedule, generates prompt-driven recommended replies from Soofi article matches, creates Asana approval workflows equivalent to investors-mcp, and demonstrates the required scenarios above with observable LLM runs and structured run summaries.
-
-## Candidate dependencies
-
-### Provided by Elephant
-
-| Dependency | Access | Purpose |
-|------------|--------|---------|
-| [investors-mcp (public fork)](https://github.com/prismteam-ai/investors-mcp) | Public git | Sanitized reference code, schema, pipeline map |
-| [Reference architecture](./docs/reference-architecture.md) | This repo | Short pipeline summary and key function names |
-| [Example config and prompts](./examples/reference/) | This repo | Target config/prompt shapes and fixtures |
-| Production MCP (read-only) | URL + tools below | Semantic search over Soofi Safavi article corpus |
-| This user story | This repo | Requirements, acceptance criteria, demo |
-
-Clone the public fork for the full sanitized source tree (`monitor-x` route, migrations, MCP server code). The docs and examples in this repo are a lighter companion; the fork is the primary code reference.
-
-**MCP endpoint:** `https://investors-mcp.vercel.app/mcp`  
-**Transport:** Streamable HTTP MCP (JSON-RPC over HTTP; use any MCP client that supports streamable HTTP)
-
-**Allowed read tools:**
-
-- `queryInvestorContent` — **required** for article matching and reply grounding
-- `listInvestorContent` — optional, for filtered listing by author, date, or segment type
-
-**Not provided (candidates supply their own):**
-
-- X API credentials and test watchlist handles
-- Asana project, personal access token, and sandbox assignees
-- LLM provider credentials and observability tooling
-- Write access to the knowledge corpus (`addInvestorParagraph` / `MCP_WRITE_TOKEN`)
-
-### Required RAG integration
-
-The agent **must** match posts against Soofi articles by calling the hosted MCP — not by connecting directly to the vector store or blob storage.
-
-For each candidate post, call `queryInvestorContent` with the post text as the query and scope to Soofi articles:
-
-```json
-{
-  "query": "<full text of the X post>",
-  "author": "Soofi Safavi",
-  "contentType": "article",
-  "segmentType": "article_full",
-  "topK": 40
-}
+```bash
+npm install
+npm run web:build && npm run web:start   # http://localhost:3200
+# or: npm run web:dev
 ```
 
-Use returned match scores for threshold gating (parent task vs recommendation subtasks) and use matched article content when generating reply drafts.
+## Run it from the CLI (no credentials required)
 
-**Do not** ingest monitored X posts into the production investors-mcp corpus unless explicitly authorized. Dry-run and local testing must not call write tools.
+```bash
+npm install
+npm start -- run --dry-run      # match + draft against the REAL MCP, no side effects
+npm start -- run                # full local pass; writes would-be Asana tasks to .out/asana/
+npm start -- config             # print the resolved config (proves it comes from files)
+npm start -- loop               # run continuously on the configured schedule
+```
 
-### Operator setup (Elephant)
+Common flags: `--dry-run`, `--author <handle>`, `--force`, `--batch-size <n>`, `--max-posts <n>`, `--top-k <n>`, `--report-to <platform-url>`, `--interval <min>` (loop).
 
-Before candidates start, confirm:
+Tests: `npm test` (44 tests; `RUN_LIVE_MCP=1 npm test` adds a live MCP smoke test).
 
-1. Production MCP is live at `https://investors-mcp.vercel.app/mcp`
-2. A smoke test of `queryInvestorContent` with the Soofi article filters above succeeds
-3. The [public investors-mcp fork](https://github.com/prismteam-ai/investors-mcp) is published and candidates can clone it
-4. Candidates receive the MCP URL and example query — not `MCP_WRITE_TOKEN` or infrastructure credentials
+## How it works
 
-Read access to MCP query tools is currently open (no read token required). Optional hardening such as a dedicated read token or rate limits may be added later; candidates will be notified if authentication becomes required.
+```
+load config (settings, watchlist, prompts)
+  → select author batch (cursor rotation)
+  → poll each author → detect new posts vs last-seen cursor → fetch referenced originals
+  → per post:  match against Soofi articles (hosted MCP, REAL)
+               gate on thresholds · exclude the corpus author's own posts
+               draft one reply per prompt file (grounded, ≤280, ends with a question)
+               create Asana parent task + one approval subtask per (article × prompt)
+               persist cursor + dedupe key · emit run summary + LLM traces
+```
 
-### Out of scope for candidates
+## Configuration (all version-controlled)
 
-- investors-mcp admin / reporting UI (`/reporting`, `/authors`, `/polling`, `/replies`)
-- Postgres-backed watchlist or automation settings in investors-mcp
-- Rebuilding or replacing the MCP server or RAG platform
+| File | Replaces (reference) | Purpose |
+|---|---|---|
+| `config/settings.yaml` | `automation_settings` row | poll interval, batch size, topK, similarity thresholds, model id, excluded authors |
+| `config/watchlist.yaml` | `managed_authors` table | watched authors (name, handle, company, aliases, active) |
+| `prompts/system.md` | DB system prompt | the constant system prompt |
+| `prompts/constraints.md` | DB constraints | global response constraints (applied to every reply) |
+| `prompts/replies/*.md` | DB prompt slots (max 4) | **one reply prompt per file — unlimited slots** |
 
-## Reference
+### Reply prompt files
 
-- [investors-mcp (public fork)](https://github.com/prismteam-ai/investors-mcp) — sanitized reference implementation
-- [Reference architecture](./docs/reference-architecture.md) — pipeline map for the investors-mcp workflow
-- [Example config and prompts](./examples/reference/) — target shapes for watchlist, settings, prompts, and fixtures
-- [Soofi XYZ Team Kit](https://github.com/soofi-xyz/soofi-xyz-team-kit)
+Each `prompts/replies/*.md` file is one reply slot, ordered by filename. Optional frontmatter:
+
+```markdown
+---
+label: "Agree & Extend"      # display label (defaults to a name derived from the filename)
+requireQuestion: true        # set false to end with a call-to-action instead of a question
+---
+Agree with the post, then extend it with a specific insight from the matched Soofi article…
+```
+
+- **Add a slot:** drop in a new `06-*.md` file. The repo ships `06-call-to-action.md.disabled`; rename it to `.md` to enable the 6th slot (it also demonstrates `requireQuestion: false`).
+- **Remove / reorder:** delete or rename files. No code change, no migration.
+
+## Credentials (all optional)
+
+With no `.env`, the agent runs fully: real MCP matching, fixture polling, deterministic grounded drafts, and an offline Asana sink. Provide any of the following to activate the corresponding live adapter — see [`.env.example`](.env.example):
+
+| Variable(s) | Activates |
+|---|---|
+| `X_BEARER_TOKEN` | live X API v2 polling |
+| `ASANA_ACCESS_TOKEN` + `ASANA_PROJECT_GID` (+ optional section/assignee/custom-field GIDs) | live Asana task creation |
+| `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` (with a matching `modelId` in settings) | live LLM reply drafting |
+| `MCP_URL` | override the MCP endpoint (defaults to the hosted one) |
+| `PLATFORM_URL` / `--report-to` | post run summaries to the Agent Network Platform |
+
+## Acceptance criteria → evidence
+
+Every acceptance criterion in [ASSIGNMENT.md](./ASSIGNMENT.md) is satisfied; the load-bearing evidence:
+
+| Brief area | Where |
+|---|---|
+| Standalone, deployable, scheduled agent | `src/cli.ts` (`run`/`loop`), `app/` (hosted runtime) |
+| Code-managed config & prompts (≥6 slots, no UI/DB) | `config/`, `prompts/`, `src/config/load.ts` |
+| Polling, new-post detection, referenced originals, dedupe | `src/pipeline/run.ts`, `src/adapters/x/` |
+| Real MCP article matching (`queryInvestorContent`) | `src/mcp/client.ts`, `src/similarity.ts` |
+| Threshold gating (parent task vs recommendation) | `src/pipeline/thresholds.ts` |
+| Prompt-driven drafts (grounded, ≤280, ends with question) | `src/adapters/llm/`, `prompts/` |
+| Asana parent + approval subtasks w/ X compose links | `src/adapters/asana/`, rendered in `app/` |
+| Dry-run with no side effects | `--dry-run`, dry-run toggle in the web UI |
+| Structured run summaries + LLM traceability | `src/pipeline/run.ts`, `src/obs/trace.ts` |
+
+## Provenance
+
+This is a standalone build developed by Andreas Steiner. The `@agent-network/contract` package is vendored under `vendor/agent-contract`, and `agent.manifest.yaml` + `agents/kestrel.md` make it registration-ready for the Agent Network Platform.
