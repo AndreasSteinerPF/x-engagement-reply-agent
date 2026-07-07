@@ -1,0 +1,44 @@
+# X Engagement Reply Agent — automation settings (code-managed).
+#
+# This file replaces the investors-mcp `automation_settings` database row.
+# Operators tune behaviour by editing this file and redeploying — no admin UI,
+# no DB migration. Bounds mirror the reference `loadMonitorSettings()` clamps.
+
+# Pause the pipeline without removing it.
+paused: false
+
+# Minimum minutes between scheduled runs (used by `loop`). Clamp [1, 1440].
+pollIntervalMinutes: 2
+
+# Authors processed per run, cursor-rotated across the watchlist. Clamp [1, 20].
+defaultBatchSize: 5
+
+# Max posts fetched per author per run. Clamp [1, 100].
+defaultMaxPostsPerAuthor: 20
+
+# Number of article matches requested from the MCP per post. Clamp [1, 20].
+defaultTopK: 6
+
+# Parent Asana task gate on the best-match RAW similarity (0..1).
+# 0 = always create a parent task when other checks pass.
+asanaTaskSimilarityThreshold: 0
+
+# Per-article recommendation / subtask gate on RAW similarity (0..1).
+# A matched article only produces reply subtasks when its rawScore >= this.
+# Tuned against the live corpus: on-topic property/ownership posts score ~0.76-0.83;
+# off-topic posts sit at the model's ~0.68 floor. 0.72 cleanly separates them.
+articleSimilarityThreshold: 0.72
+
+# Reply-drafting model. When no LLM provider credentials are present, the agent
+# automatically falls back to the deterministic offline generator and records
+# the run with provider="offline-deterministic" (still fully observable).
+# To use a real model, set a provider key (see .env.example) e.g.:
+#   modelId: openai/gpt-4.1-mini      (needs OPENAI_API_KEY)
+#   modelId: anthropic/claude-sonnet-4-6  (needs ANTHROPIC_API_KEY)
+modelId: openai/gpt-4.1-mini
+
+# Authors (normalized) whose own posts are never tasked — e.g. the corpus
+# author. Mirrors the reference "skip if author normalizes to soofisafavi".
+excludeAuthors:
+  - soofisafavi
+  - ssafavi

@@ -1,0 +1,14 @@
+# Example automation settings (maps to MonitorAutomationSettings in lib/automation/monitor-settings.ts)
+
+pollIntervalMinutes: 2
+defaultBatchSize: 5
+defaultMaxPostsPerAuthor: 20
+defaultTopK: 6
+
+# Parent Asana task gating (0 = always allow if other checks pass)
+asanaTaskSimilarityThreshold: 0
+
+# Article recommendation / subtask gating
+articleSimilarityThreshold: 0.7
+
+modelId: openai/gpt-4.1-mini

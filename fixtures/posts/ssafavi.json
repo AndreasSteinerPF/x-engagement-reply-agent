@@ -1,0 +1,13 @@
+{
+  "handle": "ssafavi",
+  "author": "Soofi Safavi",
+  "posts": [
+    {
+      "statusId": "1801000000000000030",
+      "header": "Privacy-first property tokenization",
+      "text": "Core principle: privacy-first property tokenization MUST separate digital from physical identity. County records may expose owners; the tokenized layer must not. Truth becomes programmable when property records leave silos.",
+      "kind": "post",
+      "createdAt": "2026-06-18T12:30:00Z"
+    }
+  ]
+}

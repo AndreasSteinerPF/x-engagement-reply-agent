@@ -1,0 +1,42 @@
+# Watched X authors (code-managed).
+#
+# Replaces the investors-mcp `managed_authors` table. Each entry carries the
+# author display name, handle, company, optional aliases (other handles/names
+# the same person posts under), and an active flag. Add/remove/disable authors
+# by editing this file.
+#
+# Note: posts by authors in settings.excludeAuthors (e.g. the Soofi corpus
+# author) are still polled but never produce Asana tasks.
+
+authors:
+  - author: "Soofi Safavi"
+    handle: "ssafavi"
+    company: "elephant-xyz"
+    aliases:
+      handles: ["soofisafavi"]
+      authors: ["Soofi"]
+    active: true
+
+  - author: "Balaji Srinivasan"
+    handle: "balajis"
+    company: "the-network-state"
+    aliases:
+      handles: []
+      authors: ["Balaji"]
+    active: true
+
+  - author: "6529"
+    handle: "punk6529"
+    company: "open-metaverse"
+    aliases:
+      handles: []
+      authors: ["punk6529"]
+    active: true
+
+  - author: "Naval"
+    handle: "naval"
+    company: "angellist"
+    aliases:
+      handles: []
+      authors: ["Naval Ravikant"]
+    active: true

@@ -1,0 +1,31 @@
+{
+  "description": "Synthetic fixture for reply-generation output shape. Not production data.",
+  "targetPost": {
+    "sourceUri": "https://x.com/exampleauthor/status/1234567890123456789",
+    "statusId": "1234567890123456789",
+    "header": "Example post about decentralized property data",
+    "text": "Example post text used as the query for article matching."
+  },
+  "matchedArticle": {
+    "title": "Example Soofi Article Title",
+    "sourceUri": "https://x.com/i/article/example",
+    "rawScore": 0.82,
+    "score": 91,
+    "excerpt": "Example excerpt from matched article content."
+  },
+  "llmOutput": {
+    "whyRecommended": "This article discusses the same theme of verifiable property data as the target post.",
+    "suggestedResponses": [
+      {
+        "promptIndex": 1,
+        "promptLabel": "Prompt 1",
+        "suggestedResponse": "I've argued that \"truth becomes programmable\" when property records leave silos. What would change in your model if liens and ownership were verifiable on-chain?"
+      }
+    ]
+  },
+  "thresholds": {
+    "asanaTaskSimilarityThreshold": 0,
+    "articleSimilarityThreshold": 0.7,
+    "articlesMetThreshold": true
+  }
+}

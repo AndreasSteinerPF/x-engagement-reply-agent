@@ -1,0 +1,18 @@
+# Example watchlist (synthetic — replace for your agent)
+
+authors:
+  - author: "Example Author"
+    handle: "exampleauthor"
+    company: "example-co"
+    aliases:
+      handles: []
+      authors: []
+    active: true
+
+  - author: "Soofi Safavi"
+    handle: "ssafavi"
+    company: "elephant-xyz"
+    aliases:
+      handles: []
+      authors: []
+    active: true

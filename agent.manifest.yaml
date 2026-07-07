@@ -1,0 +1,117 @@
+# Registration-ready agent manifest (conforms to @agent-network/contract AgentManifest).
+# The Agent Network Platform ingests this file during discovery to create a
+# registry record. Keeping it in source control is what makes the agent
+# "registration ready" for certification and marketplace publication.
+
+id: kestrel
+name: "Kestrel — X Engagement Reply Agent"
+version: "0.1.0"
+description: >-
+  Polls watched X authors, matches their posts against Soofi Safavi article
+  content via the hosted investors-mcp MCP, drafts prompt-driven recommended
+  replies, and creates Asana approval tasks for a human to review and post.
+purpose: >-
+  Extract the investors-mcp targeted-author polling and recommended-reply
+  pipeline into a standalone, code-managed, deployable agent. Operators evolve
+  reply behaviour (tone, count, constraints) by editing version-controlled config
+  and Markdown prompt files — no admin UI, no database settings. The agent never
+  posts to X autonomously; every reply is a pending Asana approval gate.
+
+model: openai/gpt-4.1-mini
+
+owner:
+  name: "Andreas Steiner"
+  org: "Independent"
+  contact: "https://github.com/AndreasSteinerPF"
+repository: "https://github.com/AndreasSteinerPF/x-engagement-reply-agent"
+homepage: "https://github.com/AndreasSteinerPF/x-engagement-reply-agent"
+license: "MIT"
+keywords: [x, twitter, asana, rag, mcp, soofi, engagement, reply, polling]
+
+capabilities:
+  - Poll watched X authors on a configurable schedule with cursor rotation and batching
+  - Detect new posts versus a per-handle last-seen cursor
+  - Resolve referenced originals when a watched author replies to or quotes another post
+  - Match each post against Soofi articles via the hosted MCP queryInvestorContent tool
+  - Apply independent thresholds for parent-task creation and per-article recommendation
+  - Draft one grounded reply per prompt file for each qualifying matched article
+  - Create Asana parent tasks and per (article x prompt) approval subtasks with X compose intent links
+  - Run in dry-run mode (match + draft) with no Asana tasks and no state writes
+  - Emit structured run summaries and per-run LLM traces
+  - Load all operational config and prompts from version-controlled files only
+
+triggers:
+  - Scheduled poll interval (default every 2 minutes via `loop`)
+  - Manual single-pass invocation (`run`), optionally scoped to one author
+
+inputs:
+  - name: watchlist
+    type: config/watchlist.yaml
+    description: Watched authors (name, handle, company, aliases, active flag)
+  - name: settings
+    type: config/settings.yaml
+    description: Poll interval, batch size, topK, similarity thresholds, model id
+  - name: prompts
+    type: prompts/**/*.md
+    description: System prompt, global constraints, and one reply prompt per file
+  - name: posts
+    type: X posts
+    description: Posts polled from watched authors (live X API or fixtures)
+
+outputs:
+  - name: asana-parent-task
+    type: Asana task
+    description: One parent task per qualifying post with source + similarity metadata
+  - name: asana-approval-subtask
+    type: Asana approval subtask
+    description: One per (matched article x reply prompt) with the draft reply and X compose link
+  - name: run-summary
+    type: JSON (RunSummary)
+    description: Structured per-run metrics posted to the Agent Network registry
+  - name: llm-trace
+    type: JSONL
+    description: One trace record per reply-generation run for observability
+
+dependencies:
+  services: ["X API", "Asana", "investors-mcp", "OpenAI", "Anthropic"]
+  agents: []
+  skills: ["apply-engineering-guidelines"]
+  tools: ["queryInvestorContent", "listInvestorContent"]
+  dataSources: ["Soofi Safavi article corpus (via investors-mcp)"]
+  packages: ["zod", "yaml"]
+
+runtime:
+  language: "TypeScript (Node 20+)"
+  entrypoint: "src/cli.ts"
+  deploy: "Standalone Node service or container; scheduled via the built-in `loop` or external cron"
+  schedule: "every settings.pollIntervalMinutes (default 2)"
+  requiredEnv:
+    - MCP_URL
+    - X_BEARER_TOKEN
+    - ASANA_ACCESS_TOKEN
+    - ASANA_PROJECT_GID
+    - OPENAI_API_KEY
+    - ANTHROPIC_API_KEY
+    - PLATFORM_URL
+
+documentation:
+  overview: >-
+    A hexagonal Node/TypeScript agent. The pipeline (poll -> detect -> match ->
+    gate -> draft -> task) depends only on ports; every external system (X, Asana,
+    LLM) has an offline default adapter and a credentialed live adapter, so the
+    whole flow runs deterministically with no secrets. Article matching is always
+    real, against the hosted investors-mcp MCP.
+  installation: >-
+    `npm install` at the repo root, then `npm run -w x-engagement-agent run -- --dry-run`.
+    No credentials are required for the offline/dry-run path. Provide X / Asana /
+    LLM keys via `.env` to activate the live adapters.
+  usage: >-
+    `run` executes one polling pass; `loop` runs on the configured schedule;
+    `config` prints the resolved code-managed configuration; `--dry-run` produces
+    the same matches and drafts with no side effects. Add a reply variant by
+    dropping a new Markdown file in `prompts/replies/` — no code change.
+
+source:
+  kind: github
+  location: "AndreasSteinerPF/x-engagement-reply-agent"
+  path: "packages/x-engagement-agent"

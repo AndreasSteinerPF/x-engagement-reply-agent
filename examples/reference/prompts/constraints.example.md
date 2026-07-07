@@ -1,0 +1,4 @@
+- Maximum of 280 characters.
+- Use short, simple sentences.
+- Use word selection and vocabulary consistent with the matched article.
+- Maintain a professional, non-confrontational tone.
