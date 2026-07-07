@@ -9,10 +9,11 @@ against an in-memory X fixture, with `--live-mcp`/`--live-llm`/`--live-asana`
 each independently opting into the real hosted MCP, real Amazon Bedrock +
 LangSmith, and real Asana respectively — falling back gracefully to a
 fixture/dry-run when a flag is passed without its matching credentials
-configured. This sandbox has X/Bedrock/LangSmith/Asana credentials
-configured for none of them, so live verification has only gone as far as
-"reaches the real dependency and fails for the right reason" (missing
-credentials) for Bedrock and Asana; MCP has been verified against real
+configured. Amazon Bedrock is now configured with real AWS credentials and **verified
+live** (2026-07-07) — see the Dependencies table below. X/LangSmith/Asana
+credentials are not yet configured in this sandbox, so live verification for
+those has only gone as far as "reaches the real dependency and fails for the
+right reason" (missing credentials); MCP has been verified against real
 production data (Phase 3).
 
 ## Purpose
@@ -74,7 +75,7 @@ full user story and acceptance criteria.
 | Hosted MCP (`https://investors-mcp.vercel.app/mcp`, `queryInvestorContent`) | Provided, read-only, no credentials required — verified live (Phase 3) |
 | X API v2 credentials | Candidate-supplied — not yet configured |
 | Asana PAT + sandbox project | Candidate-supplied — not yet configured; code wired (Phase 5), `--live-asana` verified to gracefully fall back to dry-run without credentials. Once you have a PAT, run `npm run asana:discover` to list every workspace/project/section/custom-field GID visible to it and get a ready-to-paste env block — Asana's UI doesn't show these GIDs directly. |
-| Amazon Bedrock model access (via Vercel AI SDK) | Candidate-supplied AWS account — code wired and reaches Bedrock (Phase 4), but not yet run against a real model since this sandbox has no AWS credentials |
+| Amazon Bedrock model access (via Vercel AI SDK) | Candidate-supplied AWS account — **verified live** on 2026-07-07: a direct model call and the full drafting pipeline (schema validation, grounding check) both succeed against `us.anthropic.claude-haiku-4-5-20251001-v1:0` in `us-east-2` |
 | LangSmith account (LLM trace observability) | Candidate-supplied — facade implemented and degrades gracefully without a key (Phase 4), but no real trace has been observed yet |
 
 ## Deploy steps
