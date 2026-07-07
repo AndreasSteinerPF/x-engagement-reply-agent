@@ -100,7 +100,12 @@ const PAGE_HTML = `<!doctype html>
 
   function describeSkip(reason) {
     if (!reason) return "skipped";
-    if (reason === "dry-run") return "matched, but dry-run mode suppressed the Asana write";
+    // "dry-run" is returned unconditionally by the dry-run gateway
+    // regardless of match quality (asanaTaskSimilarityThreshold: 0 means
+    // "always create the parent task if other checks pass" even without a
+    // real match) -- so this genuinely can't claim anything about matching.
+    if (reason === "dry-run")
+      return "reached the tasking gate; dry-run mode suppressed the write (match quality isn't visible in dry-run -- rerun live to see real scores in the Asana task notes)";
     if (reason === "already-processed" || reason === "already-tasked-existing-task")
       return "already handled in a previous run (no duplicate created)";
     if (reason === "user-not-found") return "handle could not be resolved on X";
@@ -122,9 +127,15 @@ const PAGE_HTML = `<!doctype html>
     for (const post of body.posts || []) {
       const li = document.createElement("li");
       if (post.outcome === "tasked") {
+        // subtaskCount > 0 is the only reliable signal a real match
+        // happened -- the parent task itself is created regardless
+        // (asanaTaskSimilarityThreshold: 0), even for a manual-triage post
+        // with zero qualifying articles.
+        const matchLabel = post.subtaskCount > 0
+          ? "matched " + post.subtaskCount + " approval subtask(s) worth of content"
+          : "created for manual triage (no article cleared the recommendation threshold)";
         li.innerHTML =
-          "✅ New post from <strong>@" + post.authorHandle + "</strong> matched the corpus -- " +
-          "Asana task created with " + post.subtaskCount + " approval subtask(s).<br/>" +
+          "✅ New post from <strong>@" + post.authorHandle + "</strong> -- Asana task " + matchLabel + ".<br/>" +
           "<a class=\\"btn-link\\" href=\\"" + post.sourceUri + "\\" target=\\"_blank\\">View source post</a> " +
           "<a class=\\"btn-link\\" href=\\"" + post.asanaTaskUrl + "\\" target=\\"_blank\\">Open Asana task</a>";
       } else if (post.sourceUri) {
