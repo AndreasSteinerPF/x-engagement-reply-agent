@@ -1,10 +1,11 @@
 # Deployment
 
-**Status: Phase 5 complete (Asana tasking + full orchestration wiring), and
-the full pipeline has been verified end-to-end against real external
-systems.** This document is filled in progressively as each phase in
-[`implementation-plan.md`](./implementation-plan.md) lands. Nothing in this
-repo is deployed yet (no Lambda/EventBridge/DynamoDB — that's Phase 6), but
+**Status: Phase 5 complete (full pipeline verified live end-to-end against
+real external systems), and Phase 6 (deployment) is built — CDK stack synths
+cleanly with the real Lambda, DynamoDB table, Secrets Manager references,
+Bedrock IAM, and EventBridge Schedule (disabled by default) — but not yet
+actually deployed to AWS.** This document is filled in progressively as each
+phase in [`implementation-plan.md`](./implementation-plan.md) lands.
 `scripts/invoke-local.ts` calls the real `runMonitor()` orchestrator (the
 same function `handler.ts` uses in Lambda), and every dependency has now
 been exercised live:
@@ -57,9 +58,20 @@ full user story and acceptance criteria.
 
 ## Triggers
 
-- **Scheduled:** EventBridge Scheduler, interval from `config/settings.yaml`'s
-  `pollIntervalMinutes`. *(Not yet wired — Phase 6.)*
-- **Manual/local:** `scripts/invoke-local.ts` for dry-run/single-author
+- **Scheduled:** EventBridge Scheduler (`AWS::Scheduler::Schedule`, see
+  `lib/x-engagement-reply-agent-stack.ts`), rate expression derived from
+  `config/settings.yaml`'s `pollIntervalMinutes` (currently `1440` — once
+  every 24 hours, deliberately rare/cheap for a real deployed schedule, not
+  the `2`-minute value used for nothing-runs-automatically local testing).
+  **The schedule itself defaults to `DISABLED`** at deploy time — a fresh
+  deploy never silently starts polling real X/Bedrock/Asana on a live
+  schedule. Set `SCHEDULE_ENABLED=true` in the environment before running
+  `cdk deploy` (or `cdk deploy` again after changing it) to turn it on. A
+  failed *invocation* (Scheduler couldn't call the Lambda after retries —
+  permissions, throttling) lands in a dedicated SQS DLQ with one CloudWatch
+  alarm on its depth — distinct from a failed *execution* of the handler's
+  own logic, which `notifyCriticalFailure()` already covers separately.
+- **Manual/local (fixtures):** `scripts/invoke-local.ts` for dry-run/single-author
   verification without deploying. **Fully implemented** — calls the real
   `runMonitor()` orchestrator with X/MCP/Bedrock/Asana each independently
   real when its flag (`--live-x`/`--live-mcp`/`--live-llm`/`--live-asana`)
@@ -70,11 +82,17 @@ full user story and acceptance criteria.
   row provably skips the second time — the one demo scenario that otherwise
   needed a real DynamoDB table to verify. `--force-retask` (bypassing dedupe
   for the prompt-editing demo scenario) is deferred to Phase 7.
-- **Scheduled (production):** the real Lambda `handler.ts` is implemented
-  (constructs every real client/store, acquires the run lock, calls
-  `runMonitor()`, persists the run summary, releases the lock) but is not
-  yet deployed or wired to an actual EventBridge Scheduler trigger — that's
-  Phase 6.
+- **Manual/deployed (real Lambda):** `npm run demo:trigger` starts a
+  localhost-only server (`scripts/demo-server.ts`) with a single HTML page
+  and a "Run now" button that invokes the **real deployed Lambda** via
+  `@aws-sdk/client-lambda`, for demoing the actual deployed system on demand
+  rather than waiting up to 24 hours for the schedule. AWS credentials and
+  the `lambda:InvokeFunction` call stay server-side; the browser only talks
+  to `localhost:4173`.
+- **Scheduled (production):** the real Lambda `handler.ts` — constructs every
+  real client/store, acquires the run lock, calls `runMonitor()`, persists
+  the run summary, releases the lock — is implemented and deployed by the
+  CDK stack above.
 
 ## Inputs
 
@@ -115,10 +133,76 @@ full user story and acceptance criteria.
 
 ## Deploy steps
 
-Not yet applicable — no AWS account is wired up. Once Phase 6 lands, this
-section will list the exact `aws ssm put-parameter` / `aws secretsmanager
-create-secret` commands (per the pattern in `soofi-xyz-team-kit/agents/meowth.md`)
-and the `just deploy` invocation.
+Prerequisites: AWS CLI configured (`aws configure`) with credentials that can
+create IAM roles, CloudFormation stacks, Lambda functions, DynamoDB tables,
+EventBridge schedules, SQS queues, and Secrets Manager entries — for a
+personal/sandbox AWS account used only for this project, attaching
+`AdministratorAccess` to that IAM user is the pragmatic choice (hand-picking
+a dozen managed policies buys little extra safety on an account with no
+other workloads). A real company account would instead assume a
+deploy-scoped role via OIDC, per `integrate-ci-cd` — see the CI/CD note below
+for why that's not wired here.
+
+1. **One-time per account/region: bootstrap CDK.**
+   ```
+   npx cdk bootstrap aws://<account-id>/us-east-2
+   ```
+   Creates the S3 bucket/ECR repo CDK uses to publish assets (the bundled
+   Lambda code, in this stack's case).
+
+2. **Create the three Secrets Manager secrets** the stack references by
+   name (CDK never creates these itself — it only reads them at runtime via
+   `resolveSecret()`, so the real token values never appear in the
+   CloudFormation template):
+   ```
+   aws secretsmanager create-secret --name x-engagement-reply-agent/asana-access-token --secret-string "<your Asana PAT>" --region us-east-2
+   aws secretsmanager create-secret --name x-engagement-reply-agent/x-bearer-token --secret-string "<your X bearer token>" --region us-east-2
+   aws secretsmanager create-secret --name x-engagement-reply-agent/langsmith-api-key --secret-string "<your LangSmith API key>" --region us-east-2
+   ```
+   LangSmith is optional (the facade degrades gracefully if this secret is
+   ever unreachable) — still worth creating so tracing works once deployed.
+
+3. **Confirm `.env` has the non-secret values** (`ASANA_PROJECT_GID`,
+   `ASANA_WORKSPACE_GID`, `ASANA_SECTION_GID`, `ASANA_ASSIGNEE_GID`,
+   `LANGSMITH_PROJECT`, etc.) — `bin/x-engagement-reply-agent.ts` loads
+   `.env` automatically (same file `invoke-local.ts` reads), and the stack
+   reads these via `loadRuntimeEnv()` at synth time to set the Lambda's
+   plain (non-secret) environment variables.
+
+4. **Synth and review before deploying:**
+   ```
+   npm run build
+   ```
+   (`cdk synth --strict`.) Worth inspecting the output once — confirms the
+   Bedrock IAM resource ARNs, the three secret-read grants, and the
+   schedule's `State` (should read `DISABLED` unless `SCHEDULE_ENABLED=true`
+   is set) before anything real is created.
+
+5. **Deploy:**
+   ```
+   npm run deploy
+   ```
+   (`cdk deploy --require-approval never`.) Creates/updates the
+   `XEngagementReplyAgentStack`: the DynamoDB state table, the monitor
+   Lambda, the EventBridge Schedule (disabled by default), its DLQ + alarm,
+   and the IAM roles/policies above.
+
+6. **Verify without waiting on the schedule:**
+   ```
+   npm run demo:trigger
+   ```
+   Opens a local page at `http://127.0.0.1:4173` with a "Run now" button
+   that invokes the real deployed Lambda directly — check the "Dry run" box
+   for a side-effect-free check first, then uncheck it to create a real
+   Asana task from whatever's currently on the configured watchlist.
+
+7. **Enable the real schedule once satisfied:**
+   ```
+   SCHEDULE_ENABLED=true npm run deploy
+   ```
+   Flips the `AWS::Scheduler::Schedule`'s state to `ENABLED`, so it starts
+   firing every `pollIntervalMinutes` (`1440` by default) on its own. Redeploy
+   without that variable set to disable it again.
 
 ## CI/CD note (`integrate-ci-cd` gap)
 
@@ -141,7 +225,27 @@ workflow file.
 
 Per `apply-engineering-guidelines`, every service pages on-call via PagerDuty
 on critical failure and registers metrics in Lexicon/Main Dashboard. This
-take-home has no access to those company-internal systems. Once Phase 6 lands,
-this section documents exactly what's implemented as a structural stub
-(`notifyCriticalFailure()`, structured logs, a metrics interface) versus what
-would wire into the real services in production.
+take-home has no access to those company-internal systems, so what's
+actually implemented is:
+
+- **`notifyCriticalFailure()`** (`src/observability/notify-critical-failure.ts`)
+  — logs a structured ERROR with a `// TODO production: wire PagerDuty
+  Events API v2` comment, called from `handler.ts`'s catch block for any
+  error escaping `runMonitor` entirely.
+- **A real DLQ + CloudWatch alarm** on the EventBridge Schedule's failed
+  invocations (`MonitorScheduleDlq` / `MonitorScheduleDlqAlarm` in
+  `lib/x-engagement-reply-agent-stack.ts`) — the company's one-alarm-per-DLQ
+  pattern, genuinely deployed, but with **no SNS/PagerDuty action attached**
+  to that alarm (nothing to page in this take-home). In production, an SNS
+  topic subscribed to a PagerDuty integration would sit between the alarm
+  and an on-call page.
+- **No Lexicon/Main Dashboard metrics registration** — `src/observability/logger.ts`
+  is a minimal structured-JSON-to-stdout logger (CloudWatch Logs captures
+  it), not a metrics-emission interface. A real deploy would add Powertools
+  Metrics (`AuthorsPolled`, `PostsProcessed`, `AsanaTasksCreated`, etc.) and
+  register them in Lexicon/Main Dashboard; this take-home has no access to
+  either system to verify that wiring against.
+- **Cost-prediction gate** — still genuinely deferred (not a stub, not
+  built): needs real design work (placement after matching, before
+  drafting, plus a per-token cost table for whichever model is configured)
+  rather than a quick bolt-on. See `docs/implementation-plan.md`.
