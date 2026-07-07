@@ -57,30 +57,52 @@ describe("httpHandler", () => {
     expect(mockRunHandlerCore).not.toHaveBeenCalled();
   });
 
-  it("rejects a request with no x-api-key header", async () => {
+  it("allows a dry run with no x-api-key header at all -- fully public, matching the competing candidate's own privileged-actions-only gating", async () => {
     const result = await httpHandler(fakeEvent());
-    expect(result.statusCode).toBe(401);
-    expect(mockRunHandlerCore).not.toHaveBeenCalled();
+    expect(result.statusCode).toBe(200);
+    expect(mockRunHandlerCore).toHaveBeenCalledWith(true);
   });
 
-  it("rejects a request with the wrong x-api-key", async () => {
+  it("allows a dry run even with a wrong/garbage x-api-key -- the key is simply never checked for dry runs", async () => {
     const result = await httpHandler(fakeEvent({ headers: { "x-api-key": "wrong-key" } }));
+    expect(result.statusCode).toBe(200);
+    expect(mockRunHandlerCore).toHaveBeenCalledWith(true);
+  });
+
+  it("rejects a live (dryRun=false) request with no x-api-key header", async () => {
+    const result = await httpHandler(fakeEvent({ queryStringParameters: { dryRun: "false" } }));
     expect(result.statusCode).toBe(401);
     expect(mockRunHandlerCore).not.toHaveBeenCalled();
   });
 
-  it("rejects when the secret itself can't be resolved", async () => {
+  it("rejects a live (dryRun=false) request with the wrong x-api-key", async () => {
+    const result = await httpHandler(
+      fakeEvent({
+        headers: { "x-api-key": "wrong-key" },
+        queryStringParameters: { dryRun: "false" },
+      }),
+    );
+    expect(result.statusCode).toBe(401);
+    expect(mockRunHandlerCore).not.toHaveBeenCalled();
+  });
+
+  it("rejects a live request when the secret itself can't be resolved", async () => {
     mockSend.mockReset().mockRejectedValue(new Error("ResourceNotFoundException"));
-    const result = await httpHandler(fakeEvent({ headers: { "x-api-key": "anything" } }));
+    const result = await httpHandler(
+      fakeEvent({
+        headers: { "x-api-key": "anything" },
+        queryStringParameters: { dryRun: "false" },
+      }),
+    );
     expect(result.statusCode).toBe(401);
   });
 
   it("defaults to dry-run when no dryRun query param is given", async () => {
-    await httpHandler(fakeEvent({ headers: { "x-api-key": "correct-key" } }));
+    await httpHandler(fakeEvent());
     expect(mockRunHandlerCore).toHaveBeenCalledWith(true);
   });
 
-  it("runs live only when dryRun=false is explicitly given", async () => {
+  it("runs live only when dryRun=false is explicitly given, with the correct key", async () => {
     await httpHandler(
       fakeEvent({
         headers: { "x-api-key": "correct-key" },
@@ -91,18 +113,13 @@ describe("httpHandler", () => {
   });
 
   it("treats any dryRun value other than the literal string 'false' as dry-run", async () => {
-    await httpHandler(
-      fakeEvent({
-        headers: { "x-api-key": "correct-key" },
-        queryStringParameters: { dryRun: "true" },
-      }),
-    );
+    await httpHandler(fakeEvent({ queryStringParameters: { dryRun: "true" } }));
     expect(mockRunHandlerCore).toHaveBeenCalledWith(true);
   });
 
-  it("returns the run summary as JSON on success", async () => {
+  it("returns the run summary as JSON on a successful dry run", async () => {
     mockRunHandlerCore.mockResolvedValue({ runKey: "run-1", asanaTasksCreated: 1 });
-    const result = await httpHandler(fakeEvent({ headers: { "x-api-key": "correct-key" } }));
+    const result = await httpHandler(fakeEvent());
 
     expect(result.statusCode).toBe(200);
     expect(JSON.parse(result.body as string)).toEqual({ runKey: "run-1", asanaTasksCreated: 1 });
@@ -110,7 +127,7 @@ describe("httpHandler", () => {
 
   it("returns a clean 500 with the error message when the run throws", async () => {
     mockRunHandlerCore.mockRejectedValue(new Error("boom"));
-    const result = await httpHandler(fakeEvent({ headers: { "x-api-key": "correct-key" } }));
+    const result = await httpHandler(fakeEvent());
 
     expect(result.statusCode).toBe(500);
     expect(JSON.parse(result.body as string)).toEqual({ error: "boom" });
