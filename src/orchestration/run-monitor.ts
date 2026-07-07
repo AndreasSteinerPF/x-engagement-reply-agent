@@ -11,6 +11,7 @@ import type { InvestorMcpClient } from "../mcp/investors-mcp-client";
 import type { PromptSet } from "../prompts/load-prompts";
 import { isNewerStatusId, type CursorStore } from "../state/cursor-store";
 import type { DedupeStore } from "../state/dedupe-store";
+import type { RotationStore } from "../state/rotation-store";
 import { classifyInteraction } from "../x/interaction";
 import { XRateLimitError, type XClient } from "../x/client";
 import { parsePost, type ParsedPost } from "../x/parse-post";
@@ -24,6 +25,7 @@ export type RunMonitorDeps = {
   langsmith: LangSmithFacade;
   cursorStore: CursorStore;
   dedupeStore: DedupeStore;
+  rotationStore: RotationStore;
   gateway: SideEffectGateway;
   settings: MonitorSettings;
   promptSet: PromptSet;
@@ -66,19 +68,23 @@ export type RunSummary = {
 };
 
 /**
- * The top-of-pipeline orchestrator: for every active watched author, fetch
- * new posts, classify them, match against Soofi's corpus, draft replies for
- * qualifying articles, and create the Asana task/subtasks -- wiring
- * together Phases 2-5 for the first time. Every dependency is injected so
- * this function is testable with fakes and reusable by both the real
- * Lambda handler and scripts/invoke-local.ts.
+ * The top-of-pipeline orchestrator: for every author in this run's batch,
+ * fetch new posts, classify them, match against Soofi's corpus, draft
+ * replies for qualifying articles, and create the Asana task/subtasks --
+ * wiring together Phases 2-5 for the first time. Every dependency is
+ * injected so this function is testable with fakes and reusable by both the
+ * real Lambda handler and scripts/invoke-local.ts.
  *
- * Batch/cursor-rotation across the watchlist (per
- * docs/implementation-plan.md) is intentionally not implemented yet --
- * every active author is processed every run. At demo scale (a handful of
- * authors) this is a documented no-op simplification, not a missing
- * feature; add rotation state if the watchlist grows large enough for a
- * single run to no longer cover everyone.
+ * Batch/cursor-rotation across the watchlist (per the reference
+ * implementation's `state.cursor` in investors-mcp's monitor-x route): each
+ * run processes at most `settings.defaultBatchSize` active authors, starting
+ * at the persisted rotation cursor and wrapping cyclically, then advances
+ * the cursor by however many authors were actually attempted this run (not
+ * the full batch, if the run stopped early on a rate limit). A caller that
+ * pre-filters `deps.watchlist` down to a single author (scripts/invoke-local.ts's
+ * --author flag) naturally bypasses rotation, since a batch over a
+ * one-element list always selects that same element -- matching the
+ * reference's `authorFilter` behavior, with no special-casing needed here.
  */
 export async function runMonitor(deps: RunMonitorDeps): Promise<RunSummary> {
   const startedAt = new Date().toISOString();
@@ -87,9 +93,19 @@ export async function runMonitor(deps: RunMonitorDeps): Promise<RunSummary> {
   let asanaTasksCreated = 0;
 
   const activeAuthors = deps.watchlist.filter((author) => author.active);
-  let stoppedEarlyReason: string | undefined;
+  const rawCursorIndex = activeAuthors.length > 0 ? await deps.rotationStore.getCursorIndex() : 0;
+  const cursorIndex = activeAuthors.length > 0 ? rawCursorIndex % activeAuthors.length : 0;
+  const batchSize = Math.min(Math.max(deps.settings.defaultBatchSize, 1), activeAuthors.length);
+  const batch: WatchedAuthor[] = [];
+  for (let i = 0; i < batchSize; i += 1) {
+    batch.push(activeAuthors[(cursorIndex + i) % activeAuthors.length]);
+  }
 
-  for (const author of activeAuthors) {
+  let stoppedEarlyReason: string | undefined;
+  let attemptedCount = 0;
+
+  for (const author of batch) {
+    attemptedCount += 1;
     try {
       await processAuthor(deps, author, posts, (count) => {
         postsFetched += count;
@@ -121,6 +137,11 @@ export async function runMonitor(deps: RunMonitorDeps): Promise<RunSummary> {
     }
   }
 
+  if (activeAuthors.length > 0) {
+    const newCursorIndex = (cursorIndex + attemptedCount) % activeAuthors.length;
+    await deps.gateway.writeRotationCursor(newCursorIndex);
+  }
+
   asanaTasksCreated = posts.filter((p) => p.outcome === "tasked").length;
 
   return {
@@ -128,7 +149,7 @@ export async function runMonitor(deps: RunMonitorDeps): Promise<RunSummary> {
     startedAt,
     finishedAt: new Date().toISOString(),
     dryRun: deps.gateway.dryRun,
-    authorsPolled: activeAuthors.length,
+    authorsPolled: batch.length,
     postsFetched,
     newPostsProcessed: posts.length,
     asanaTasksCreated,

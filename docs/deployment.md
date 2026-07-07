@@ -88,9 +88,10 @@ full user story and acceptance criteria.
   subtasks across 3 articles.
 - Structured run summaries persisted in DynamoDB. **Implemented (Phase 5)**
   — `src/state/run-summary-store.ts`, written via the side-effect gateway
-  (skipped in dry-run, like every other write). Per-handle cursor,
-  batch-rotation, dedupe, and run-lock state **are implemented (Phase 2)** —
-  see `src/state/`.
+  (skipped in dry-run, like every other write). Per-handle cursor, dedupe,
+  and run-lock state **are implemented (Phase 2)** — see `src/state/`.
+  Watchlist batch rotation (`src/state/rotation-store.ts`) was added in a
+  post-Phase-5 audit — see `docs/implementation-plan.md` for the fix.
 
 ## Dependencies
 

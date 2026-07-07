@@ -12,6 +12,7 @@ import type { LangSmithFacade } from "../observability/langsmith";
 import type { PromptSet } from "../prompts/load-prompts";
 import type { CursorStore } from "../state/cursor-store";
 import type { DedupeStore } from "../state/dedupe-store";
+import type { RotationStore } from "../state/rotation-store";
 import { XRateLimitError, type XClient } from "../x/client";
 import type { RawTweet, RawUser } from "../x/types";
 import { runMonitor, type RunMonitorDeps } from "./run-monitor";
@@ -148,6 +149,13 @@ function fakeDedupeStore(hasProcessed = false): DedupeStore {
   };
 }
 
+function fakeRotationStore(initialIndex = 0): RotationStore {
+  return {
+    getCursorIndex: vi.fn().mockResolvedValue(initialIndex),
+    setCursorIndex: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 function fakeGateway(overrides: Partial<SideEffectGateway> = {}): SideEffectGateway {
   return {
     dryRun: false,
@@ -160,6 +168,7 @@ function fakeGateway(overrides: Partial<SideEffectGateway> = {}): SideEffectGate
     writeCursor: vi.fn().mockResolvedValue(undefined),
     writeDedupeKey: vi.fn().mockResolvedValue(undefined),
     writeRunSummary: vi.fn().mockResolvedValue(undefined),
+    writeRotationCursor: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -173,6 +182,7 @@ function baseDeps(overrides: Partial<RunMonitorDeps> = {}): RunMonitorDeps {
     langsmith: fakeLangsmith(),
     cursorStore: fakeCursorStore(),
     dedupeStore: fakeDedupeStore(),
+    rotationStore: fakeRotationStore(),
     gateway: fakeGateway(),
     settings: SETTINGS,
     promptSet: PROMPT_SET,
@@ -180,6 +190,24 @@ function baseDeps(overrides: Partial<RunMonitorDeps> = {}): RunMonitorDeps {
     runKey: "run-1",
     ...overrides,
   };
+}
+
+function authorWithHandle(handle: string, author: string): WatchedAuthor {
+  return { ...AUTHOR, handle, author };
+}
+
+function multiAuthorXClient(handles: string[]): XClient {
+  const usersByHandle = new Map(
+    handles.map((handle, i) => [handle, { id: `${1000 + i}`, username: handle, name: handle }]),
+  );
+  return fakeXClient({
+    resolveUserIds: vi.fn().mockImplementation(async (requested: string[]) => {
+      const handle = requested[0]?.toLowerCase();
+      const user = handle ? usersByHandle.get(handle) : undefined;
+      return user ? new Map([[handle as string, user]]) : new Map();
+    }),
+    fetchRecentPosts: vi.fn().mockResolvedValue({ posts: [], includes: {} }),
+  });
 }
 
 describe("runMonitor", () => {
@@ -394,8 +422,11 @@ describe("runMonitor", () => {
       .fn()
       .mockRejectedValue(new XRateLimitError({ remaining: 0, resetEpochSeconds: 1_780_000_000 }));
     const xClient = fakeXClient({ resolveUserIds, fetchRecentPosts });
+    const gateway = fakeGateway();
 
-    const summary = await runMonitor(baseDeps({ xClient, watchlist: [AUTHOR, secondAuthor] }));
+    const summary = await runMonitor(
+      baseDeps({ xClient, gateway, watchlist: [AUTHOR, secondAuthor] }),
+    );
 
     expect(summary.stoppedEarlyReason).toBe("rate-limited");
     expect(summary.posts).toHaveLength(1);
@@ -404,5 +435,82 @@ describe("runMonitor", () => {
     // The second author is never even attempted -- no cascade of identical
     // rate-limit failures.
     expect(resolveUserIds).toHaveBeenCalledTimes(1);
+    // Rotation only advances past the one author actually attempted, not
+    // the full two-author batch, so the skipped author is retried first on
+    // the next scheduled tick instead of being skipped over.
+    expect(gateway.writeRotationCursor).toHaveBeenCalledWith(1);
+  });
+
+  describe("batch rotation across the watchlist", () => {
+    const authorA = authorWithHandle("authora", "Author A");
+    const authorB = authorWithHandle("authorb", "Author B");
+    const authorC = authorWithHandle("authorc", "Author C");
+    const watchlist = [authorA, authorB, authorC];
+
+    it("processes only defaultBatchSize authors per run, starting at the persisted cursor", async () => {
+      const xClient = multiAuthorXClient(["authora", "authorb", "authorc"]);
+      const summary = await runMonitor(
+        baseDeps({
+          xClient,
+          watchlist,
+          settings: { ...SETTINGS, defaultBatchSize: 2 },
+          rotationStore: fakeRotationStore(0),
+        }),
+      );
+
+      expect(summary.authorsPolled).toBe(2);
+      expect(xClient.resolveUserIds).toHaveBeenCalledTimes(2);
+      expect(xClient.resolveUserIds).toHaveBeenNthCalledWith(1, ["authora"]);
+      expect(xClient.resolveUserIds).toHaveBeenNthCalledWith(2, ["authorb"]);
+    });
+
+    it("wraps the batch cyclically past the end of the watchlist", async () => {
+      const xClient = multiAuthorXClient(["authora", "authorb", "authorc"]);
+      await runMonitor(
+        baseDeps({
+          xClient,
+          watchlist,
+          settings: { ...SETTINGS, defaultBatchSize: 2 },
+          rotationStore: fakeRotationStore(2),
+        }),
+      );
+
+      // Starting at index 2 (authorC) with a batch of 2 wraps back to
+      // authorA rather than running off the end of the array.
+      expect(xClient.resolveUserIds).toHaveBeenNthCalledWith(1, ["authorc"]);
+      expect(xClient.resolveUserIds).toHaveBeenNthCalledWith(2, ["authora"]);
+    });
+
+    it("advances the persisted rotation cursor by the batch size, wrapping around the watchlist length", async () => {
+      const xClient = multiAuthorXClient(["authora", "authorb", "authorc"]);
+      const gateway = fakeGateway();
+      await runMonitor(
+        baseDeps({
+          xClient,
+          watchlist,
+          gateway,
+          settings: { ...SETTINGS, defaultBatchSize: 2 },
+          rotationStore: fakeRotationStore(2),
+        }),
+      );
+
+      // (2 + 2) % 3 = 1 -- the next run picks up at authorB.
+      expect(gateway.writeRotationCursor).toHaveBeenCalledWith(1);
+    });
+
+    it("caps the batch at the active watchlist length when defaultBatchSize is larger", async () => {
+      const xClient = multiAuthorXClient(["authora", "authorb", "authorc"]);
+      const summary = await runMonitor(
+        baseDeps({
+          xClient,
+          watchlist,
+          settings: { ...SETTINGS, defaultBatchSize: 20 },
+          rotationStore: fakeRotationStore(0),
+        }),
+      );
+
+      expect(summary.authorsPolled).toBe(3);
+      expect(xClient.resolveUserIds).toHaveBeenCalledTimes(3);
+    });
   });
 });

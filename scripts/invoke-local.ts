@@ -25,6 +25,7 @@ import { loadPromptSet } from "../src/prompts/load-prompts";
 import type { CursorStore } from "../src/state/cursor-store";
 import type { DedupeStore, MarkProcessedParams } from "../src/state/dedupe-store";
 import { createFileStateStore } from "../src/state/file-state-store";
+import type { RotationStore } from "../src/state/rotation-store";
 import { createXClient, type XClient } from "../src/x/client";
 import type { RawTweet, RawUser } from "../src/x/types";
 
@@ -186,6 +187,23 @@ function createFixtureAsanaWithRealStateGateway(
     writeCursor: (handle, statusId) => cursorStore.setCursor(handle, statusId),
     writeDedupeKey: (params) => dedupeStore.markProcessed(params),
     writeRunSummary: async () => {},
+    writeRotationCursor: async () => {},
+  };
+}
+
+/**
+ * Batch rotation is meaningless here: --author always pre-filters the
+ * watchlist down to one entry before calling runMonitor, and a batch over a
+ * one-element list always selects that same element regardless of cursor
+ * value -- so a fresh in-memory store (never persisted) is sufficient.
+ */
+function createInMemoryRotationStore(): RotationStore {
+  let cursorIndex = 0;
+  return {
+    getCursorIndex: async () => cursorIndex,
+    setCursorIndex: async (index) => {
+      cursorIndex = index;
+    },
   };
 }
 
@@ -268,6 +286,7 @@ async function main(): Promise<void> {
     xClient = createFixtureXClient();
   }
   const breaker = createCircuitBreaker(3);
+  const rotationStore = createInMemoryRotationStore();
 
   let cursorStore: CursorStore;
   let dedupeStore: DedupeStore;
@@ -311,6 +330,7 @@ async function main(): Promise<void> {
       cursorStore,
       dedupeStore,
       runSummaryStore: { writeRunSummary: async () => {} }, // no real DynamoDB locally
+      rotationStore,
     });
     console.log(`[invoke-local] Asana: live (project=${env.ASANA_PROJECT_GID})`);
   } else if (persist) {
@@ -339,6 +359,7 @@ async function main(): Promise<void> {
     langsmith,
     cursorStore,
     dedupeStore,
+    rotationStore,
     gateway,
     settings,
     promptSet,

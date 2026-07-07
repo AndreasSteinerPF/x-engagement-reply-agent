@@ -6,6 +6,7 @@ import type { RuntimeEnv } from "../config/env";
 import type { RunSummary } from "../orchestration/run-monitor";
 import type { CursorStore } from "../state/cursor-store";
 import type { DedupeStore, MarkProcessedParams } from "../state/dedupe-store";
+import type { RotationStore } from "../state/rotation-store";
 import type { RunSummaryStore } from "../state/run-summary-store";
 
 export type ProcessAsanaTaskingParams = Omit<
@@ -19,6 +20,7 @@ export type SideEffectGateway = {
   writeCursor: (handle: string, statusId: string) => Promise<void>;
   writeDedupeKey: (params: MarkProcessedParams) => Promise<void>;
   writeRunSummary: (summary: RunSummary) => Promise<void>;
+  writeRotationCursor: (index: number) => Promise<void>;
 };
 
 export type LiveSideEffectGatewayDeps = {
@@ -28,6 +30,7 @@ export type LiveSideEffectGatewayDeps = {
   cursorStore: CursorStore;
   dedupeStore: DedupeStore;
   runSummaryStore: RunSummaryStore;
+  rotationStore: RotationStore;
 };
 
 /**
@@ -54,6 +57,7 @@ export function createLiveSideEffectGateway(deps: LiveSideEffectGatewayDeps): Si
     writeCursor: (handle, statusId) => deps.cursorStore.setCursor(handle, statusId),
     writeDedupeKey: (params) => deps.dedupeStore.markProcessed(params),
     writeRunSummary: (summary) => deps.runSummaryStore.writeRunSummary(summary),
+    writeRotationCursor: (index) => deps.rotationStore.setCursorIndex(index),
   };
 }
 
@@ -64,5 +68,6 @@ export function createDryRunSideEffectGateway(): SideEffectGateway {
     writeCursor: async () => {},
     writeDedupeKey: async () => {},
     writeRunSummary: async () => {},
+    writeRotationCursor: async () => {},
   };
 }

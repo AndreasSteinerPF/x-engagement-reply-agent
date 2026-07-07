@@ -6,6 +6,7 @@ import type { ArticleSimilarity } from "../matching/similarity-gating";
 import type { RunSummary } from "../orchestration/run-monitor";
 import type { CursorStore } from "../state/cursor-store";
 import type { DedupeStore } from "../state/dedupe-store";
+import type { RotationStore } from "../state/rotation-store";
 import type { RunSummaryStore } from "../state/run-summary-store";
 import type { InteractionResult } from "../x/interaction";
 import type { ParsedPost } from "../x/parse-post";
@@ -66,13 +67,14 @@ describe("createDryRunSideEffectGateway", () => {
     expect(result).toEqual({ created: false, reason: "dry-run" });
   });
 
-  it("writeCursor, writeDedupeKey, and writeRunSummary are all safe no-ops", async () => {
+  it("writeCursor, writeDedupeKey, writeRunSummary, and writeRotationCursor are all safe no-ops", async () => {
     const gateway = createDryRunSideEffectGateway();
     await expect(gateway.writeCursor("handle", "123")).resolves.toBeUndefined();
     await expect(
       gateway.writeDedupeKey({ sourceUri: "uri", statusId: "1", outcome: "skipped" }),
     ).resolves.toBeUndefined();
     await expect(gateway.writeRunSummary(RUN_SUMMARY)).resolves.toBeUndefined();
+    await expect(gateway.writeRotationCursor(3)).resolves.toBeUndefined();
   });
 });
 
@@ -108,6 +110,13 @@ describe("createLiveSideEffectGateway", () => {
     return { writeRunSummary: vi.fn().mockResolvedValue(undefined) };
   }
 
+  function fakeRotationStore(): RotationStore {
+    return {
+      getCursorIndex: vi.fn().mockResolvedValue(0),
+      setCursorIndex: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
   function env(): RuntimeEnv {
     return { AWS_REGION: "us-east-2", ASANA_ACCESS_TOKEN: "token", ASANA_PROJECT_GID: "project-1" };
   }
@@ -120,6 +129,7 @@ describe("createLiveSideEffectGateway", () => {
       cursorStore: fakeCursorStore(),
       dedupeStore: fakeDedupeStore(),
       runSummaryStore: fakeRunSummaryStore(),
+      rotationStore: fakeRotationStore(),
       ...overrides,
     };
   }
@@ -175,5 +185,14 @@ describe("createLiveSideEffectGateway", () => {
     await gateway.writeRunSummary(RUN_SUMMARY);
 
     expect(runSummaryStore.writeRunSummary).toHaveBeenCalledWith(RUN_SUMMARY);
+  });
+
+  it("delegates writeRotationCursor to the real rotation store", async () => {
+    const rotationStore = fakeRotationStore();
+    const gateway = createLiveSideEffectGateway(deps({ rotationStore }));
+
+    await gateway.writeRotationCursor(2);
+
+    expect(rotationStore.setCursorIndex).toHaveBeenCalledWith(2);
   });
 });

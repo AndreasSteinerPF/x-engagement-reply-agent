@@ -20,6 +20,7 @@ import { loadPromptSet } from "./prompts/load-prompts";
 import { createCursorStore } from "./state/cursor-store";
 import { createDedupeStore } from "./state/dedupe-store";
 import { createDynamoDocumentClient } from "./state/dynamo-client";
+import { createRotationStore } from "./state/rotation-store";
 import { createRunLock } from "./state/run-lock";
 import { createRunSummaryStore } from "./state/run-summary-store";
 import { createXClient } from "./x/client";
@@ -82,6 +83,7 @@ export async function handler(event: HandlerEvent = {}): Promise<RunSummary> {
   const cursorStore = createCursorStore(dynamoDoc, tableName);
   const dedupeStore = createDedupeStore(dynamoDoc, tableName, settings.dedupeTtlDays);
   const runSummaryStore = createRunSummaryStore(dynamoDoc, tableName);
+  const rotationStore = createRotationStore(dynamoDoc, tableName);
   const runLock = createRunLock(dynamoDoc, tableName);
 
   let gateway: SideEffectGateway;
@@ -97,6 +99,7 @@ export async function handler(event: HandlerEvent = {}): Promise<RunSummary> {
       cursorStore,
       dedupeStore,
       runSummaryStore,
+      rotationStore,
     });
   }
 
@@ -128,6 +131,7 @@ export async function handler(event: HandlerEvent = {}): Promise<RunSummary> {
       langsmith,
       cursorStore,
       dedupeStore,
+      rotationStore,
       gateway,
       settings,
       promptSet,
