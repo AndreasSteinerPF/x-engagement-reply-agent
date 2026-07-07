@@ -119,25 +119,24 @@ full user story and acceptance criteria.
   real client/store, acquires the run lock, calls `runMonitor()`, persists
   the run summary, releases the lock — is implemented and deployed by the
   CDK stack above.
-- **Evaluator on-demand (public, no AWS credentials needed):** a second
-  Lambda (`src/http-handler.ts`) fronted by a Function URL —
+- **Evaluator on-demand (public, no AWS credentials or key needed for a dry
+  run):** a second Lambda (`src/http-handler.ts`) fronted by a Function URL —
   **https://itcbiyuqao3erlfh7hxl23gcjq0dtgne.lambda-url.us-east-2.on.aws/**
   (also visible as the CDK stack output `XEngagementReplyAgentStack.HttpTriggerUrl`)
-  — shares the exact same `runHandlerCore()` pipeline as `handler.ts`. The
-  URL itself is not sensitive (viewing the page does nothing; only `POST`
-  with the correct key runs anything). `GET` on that URL serves a small
-  self-contained HTML page (no separate hosting, no side
-  effects, no key required just to view it) with a "Run now" button and the
-  same friendly result rendering as `demo:trigger`. Actually running the
-  pipeline (`POST`) requires a single rotatable API key — resolved from
+  — shares the exact same `runHandlerCore()` pipeline as `handler.ts`. `GET`
+  serves a small self-contained HTML page (no separate hosting) with a "Run
+  now" button and the same friendly result rendering as `demo:trigger`.
+  **The default dry run needs no credential at all** — anyone with the URL
+  can independently verify the pipeline actually polls, matches, and drafts,
+  with zero side effects. Only a *live* run (`?dryRun=false`, real
+  X/Bedrock/Asana writes) requires a rotatable API key — resolved from
   Secrets Manager server-side, checked against the `x-api-key` header —
-  rather than a standing IAM identity: easier to revoke (delete/rotate one
-  secret value), no AWS CLI or credential setup needed on the caller's end.
-  **The key value itself is deliberately not committed anywhere in this
-  repo** (typed into the page's own input field, or sent as a header
-  directly) — it was shared with the evaluator out-of-band. Defaults to
-  `dryRun=true` (safe); pass `?dryRun=false` (or uncheck the box in the UI)
-  for a real run.
+  rather than a standing IAM identity: easier to revoke, no AWS CLI setup
+  needed. (This mirrors the same privileged-actions-only gating pattern the
+  competing candidate's own evaluator dashboard uses.) **The key value is
+  deliberately not committed anywhere in this repo**; it's shared
+  out-of-band only if/when a live run needs to be independently proven
+  beyond the recorded demo.
 
 ## Inputs
 
@@ -206,12 +205,13 @@ for why that's not wired here.
    aws secretsmanager create-secret --name x-engagement-reply-agent/evaluator-api-key --secret-string "$(node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))")" --region us-east-2
    ```
    The first three are candidate-private credentials. `evaluator-api-key` is
-   different in kind — it's the value meant to be handed to an evaluator (see
-   "Triggers" above) to gate the public Function URL. Generate it randomly
-   as shown, then share the value out-of-band (not via this repo/PR) with
-   whoever needs to trigger the deployed system without AWS credentials.
-   LangSmith is optional (the facade degrades gracefully if that secret is
-   ever unreachable) — still worth creating so tracing works once deployed.
+   different in kind — it only gates *live* (`?dryRun=false`) runs on the
+   public Function URL (see "Triggers" above); the default dry run needs no
+   key at all. Generate it randomly as shown, and only share the value
+   out-of-band (not via this repo/PR) if a live run specifically needs to be
+   proven beyond the recorded demo. LangSmith is optional (the facade
+   degrades gracefully if that secret is ever unreachable) — still worth
+   creating so tracing works once deployed.
 
 3. **Confirm `.env` has the non-secret values** (`ASANA_PROJECT_GID`,
    `ASANA_WORKSPACE_GID`, `ASANA_SECTION_GID`, `ASANA_ASSIGNEE_GID`,
