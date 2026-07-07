@@ -18,3 +18,27 @@ authors:
       handles: []
       authors: []
     active: true
+
+  - author: "Crypto.com"
+    handle: "cryptocom"
+    company: "crypto.com"
+    aliases:
+      handles: []
+      authors: []
+    active: true
+
+  - author: "Propy"
+    handle: "propy"
+    company: "propy"
+    aliases:
+      handles: []
+      authors: []
+    active: true
+
+  - author: "Aleksa Zakic"
+    handle: "aleksasazakikic"
+    company: "personal"
+    aliases:
+      handles: []
+      authors: []
+    active: true

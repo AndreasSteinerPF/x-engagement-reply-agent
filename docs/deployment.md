@@ -1,20 +1,37 @@
 # Deployment
 
-**Status: Phase 5 complete (Asana tasking + full orchestration wiring).**
-This document is filled in progressively as each phase in
+**Status: Phase 5 complete (Asana tasking + full orchestration wiring), and
+the full pipeline has been verified end-to-end against real external
+systems.** This document is filled in progressively as each phase in
 [`implementation-plan.md`](./implementation-plan.md) lands. Nothing in this
-repo is deployed yet. `scripts/invoke-local.ts` now calls the real
-`runMonitor()` orchestrator (the same function `handler.ts` uses in Lambda)
-against an in-memory X fixture, with `--live-mcp`/`--live-llm`/`--live-asana`
-each independently opting into the real hosted MCP, real Amazon Bedrock +
-LangSmith, and real Asana respectively — falling back gracefully to a
-fixture/dry-run when a flag is passed without its matching credentials
-configured. Amazon Bedrock is now configured with real AWS credentials and **verified
-live** (2026-07-07) — see the Dependencies table below. X/LangSmith/Asana
-credentials are not yet configured in this sandbox, so live verification for
-those has only gone as far as "reaches the real dependency and fails for the
-right reason" (missing credentials); MCP has been verified against real
-production data (Phase 3).
+repo is deployed yet (no Lambda/EventBridge/DynamoDB — that's Phase 6), but
+`scripts/invoke-local.ts` calls the real `runMonitor()` orchestrator (the
+same function `handler.ts` uses in Lambda), and every dependency has now
+been exercised live:
+
+- **X API v2** — real credentials configured (pay-per-use tier, `X_BEARER_TOKEN`).
+  `--live-x` verified against three real accounts (`cryptocom`, `propy`, and
+  the candidate's own account), including a real referenced-post resolution
+  and correct backfill-window bounding on first poll.
+- **Hosted MCP** — verified live since Phase 3; also used directly to
+  hand-tune a real post's wording against the live corpus before posting it,
+  confirming real (not fixture) similarity scoring end-to-end.
+- **Amazon Bedrock** — real AWS credentials + model access configured.
+  `--live-llm` verified both in isolation (direct model call) and through
+  the full drafting pipeline (schema validation, quoted-phrase grounding
+  check, and the per-prompt `endsWithQuestion: false` override all fired
+  correctly on real model output).
+- **Asana** — real PAT + sandbox project configured. `--live-asana` verified
+  to create a real parent task + real approval subtasks (including a
+  multi-article run producing 18 subtasks across 3 matched articles), and a
+  repeat run against the same real post correctly reported
+  `already-tasked-existing-task` with zero duplicates created — proving the
+  live existing-task-scan dedupe path, not just the DynamoDB fast path.
+- **LangSmith** — facade implemented and degrades gracefully without a key;
+  not yet configured with real credentials (optional, tracing only).
+
+This is a real, live, end-to-end proof of the core acceptance criteria — not
+just passing unit tests against fixtures.
 
 ## Purpose
 
@@ -50,8 +67,10 @@ full user story and acceptance criteria.
 - `config/watchlist.yaml`, `config/settings.yaml` — version-controlled
   operational config, Zod-validated at load time by `src/config/`. Schema
   documented in [`config-schema.md`](./config-schema.md). **Implemented
-  (Phase 1).** `config/watchlist.yaml` still holds a placeholder author —
-  swap in 3+ real X handles before the Phase 7 demo.
+  (Phase 1).** `config/watchlist.yaml` now includes real X handles
+  (`cryptocom`, `propy`, plus the candidate's own account) used for live
+  verification, alongside the original placeholder entries — still worth a
+  final pass before the Phase 7 demo to pick the definitive author list.
 - `prompts/system.md`, `prompts/constraints.md`, `prompts/replies/*.md` —
   version-controlled reply-generation instructions, loaded by
   `src/prompts/load-prompts.ts`. **Implemented (Phase 1)** — six reply-prompt
@@ -59,9 +78,10 @@ full user story and acceptance criteria.
 
 ## Outputs
 
-- Asana parent tasks + approval subtasks. **Implemented (Phase 5)** —
-  `src/asana/create-asana-tasking.ts`; not yet verified against a real
-  sandbox project (no Asana credentials configured in this sandbox).
+- Asana parent tasks + approval subtasks. **Implemented (Phase 5),
+  verified live** — `src/asana/create-asana-tasking.ts` confirmed against a
+  real sandbox project, including a real multi-article match producing 18
+  subtasks across 3 articles.
 - Structured run summaries persisted in DynamoDB. **Implemented (Phase 5)**
   — `src/state/run-summary-store.ts`, written via the side-effect gateway
   (skipped in dry-run, like every other write). Per-handle cursor,
@@ -73,9 +93,9 @@ full user story and acceptance criteria.
 | Dependency | Status |
 |---|---|
 | Hosted MCP (`https://investors-mcp.vercel.app/mcp`, `queryInvestorContent`) | Provided, read-only, no credentials required — verified live (Phase 3) |
-| X API v2 credentials | Candidate-supplied — not yet configured |
-| Asana PAT + sandbox project | Candidate-supplied — not yet configured; code wired (Phase 5), `--live-asana` verified to gracefully fall back to dry-run without credentials. Once you have a PAT, run `npm run asana:discover` to list every workspace/project/section/custom-field GID visible to it and get a ready-to-paste env block — Asana's UI doesn't show these GIDs directly. |
-| Amazon Bedrock model access (via Vercel AI SDK) | Candidate-supplied AWS account — **verified live** on 2026-07-07: a direct model call and the full drafting pipeline (schema validation, grounding check) both succeed against `us.anthropic.claude-haiku-4-5-20251001-v1:0` in `us-east-2` |
+| X API v2 credentials | Candidate-supplied, **pay-per-use tier** (X moved off fixed monthly tiers to per-resource pricing in Feb 2026) — **verified live** on 2026-07-07 against three real accounts |
+| Asana PAT + sandbox project | Candidate-supplied — **verified live** on 2026-07-07: real parent task + subtask creation, and real repeat-run dedupe via the live existing-task scan. Run `npm run asana:discover` to list every workspace/project/section/custom-field GID visible to a new token and get a ready-to-paste env block — Asana's UI doesn't show these GIDs directly. |
+| Amazon Bedrock model access (via Vercel AI SDK) | Candidate-supplied AWS account — **verified live** on 2026-07-07: direct model call, full drafting pipeline, and a per-prompt behavioral override all confirmed against `us.anthropic.claude-haiku-4-5-20251001-v1:0` in `us-east-2` (Claude 3.5 Haiku was retired from the Bedrock catalog since this project started) |
 | LangSmith account (LLM trace observability) | Candidate-supplied — facade implemented and degrades gracefully without a key (Phase 4), but no real trace has been observed yet |
 
 ## Deploy steps
