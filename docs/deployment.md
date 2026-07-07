@@ -27,8 +27,12 @@ been exercised live:
   repeat run against the same real post correctly reported
   `already-tasked-existing-task` with zero duplicates created — proving the
   live existing-task-scan dedupe path, not just the DynamoDB fast path.
-- **LangSmith** — facade implemented and degrades gracefully without a key;
-  not yet configured with real credentials (optional, tracing only).
+- **LangSmith** — real API key + project configured. `--live-llm` verified
+  to produce real traces: 18 real spans (one per drafted reply), each
+  correctly grouped under the run's session, tagged with prompt
+  index/label/article metadata, with real latency, token counts, and
+  output — satisfying the "observable, traceable LLM runs" acceptance
+  criterion with actual evidence, not just a passing unit test.
 
 This is a real, live, end-to-end proof of the core acceptance criteria — not
 just passing unit tests against fixtures.
@@ -96,7 +100,7 @@ full user story and acceptance criteria.
 | X API v2 credentials | Candidate-supplied, **pay-per-use tier** (X moved off fixed monthly tiers to per-resource pricing in Feb 2026) — **verified live** on 2026-07-07 against three real accounts |
 | Asana PAT + sandbox project | Candidate-supplied — **verified live** on 2026-07-07: real parent task + subtask creation, and real repeat-run dedupe via the live existing-task scan. Run `npm run asana:discover` to list every workspace/project/section/custom-field GID visible to a new token and get a ready-to-paste env block — Asana's UI doesn't show these GIDs directly. |
 | Amazon Bedrock model access (via Vercel AI SDK) | Candidate-supplied AWS account — **verified live** on 2026-07-07: direct model call, full drafting pipeline, and a per-prompt behavioral override all confirmed against `us.anthropic.claude-haiku-4-5-20251001-v1:0` in `us-east-2` (Claude 3.5 Haiku was retired from the Bedrock catalog since this project started) |
-| LangSmith account (LLM trace observability) | Candidate-supplied — facade implemented and degrades gracefully without a key (Phase 4), but no real trace has been observed yet |
+| LangSmith account (LLM trace observability) | Candidate-supplied — **verified live** on 2026-07-07: real traces observed in the LangSmith UI, grouped by run session, with per-prompt metadata |
 
 ## Deploy steps
 
