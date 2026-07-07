@@ -83,7 +83,17 @@ export async function createAsanaTasking(
     return { created: false, reason: "excluded-author" };
   }
 
-  if (!env.ASANA_ACCESS_TOKEN || !env.ASANA_PROJECT_GID) {
+  // Only ASANA_PROJECT_GID is checked here -- the access token requirement
+  // is already enforced by the time `asanaClient` was constructed (real
+  // Lambda: handler.ts's requireEnv() on the resolved secret; here it's
+  // just an opaque client). Checking env.ASANA_ACCESS_TOKEN directly was a
+  // stale leftover from before ASANA_ACCESS_TOKEN_SECRET_ARN existed: the
+  // deployed Lambda deliberately never sets the plaintext env var anymore
+  // (see src/config/resolve-secret.ts), so this check always failed there
+  // even with a perfectly valid, real Asana client -- only ever caught by
+  // an actual deployed run, since invoke-local.ts always passes the plain
+  // env var directly.
+  if (!env.ASANA_PROJECT_GID) {
     return { created: false, reason: "missing-asana-config" };
   }
   const projectGid = env.ASANA_PROJECT_GID;

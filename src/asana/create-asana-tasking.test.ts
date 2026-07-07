@@ -110,14 +110,26 @@ describe("createAsanaTasking", () => {
     expect(result).toEqual({ created: false, reason: "excluded-author" });
   });
 
-  it("returns missing-asana-config when credentials or project gid are absent", async () => {
+  it("returns missing-asana-config when the project gid is absent", async () => {
     const result = await createAsanaTasking({
       ...BASE_PARAMS,
       asanaClient: fakeAsanaClient(),
       dedupeCache: fakeDedupeCache(),
-      env: env({ ASANA_ACCESS_TOKEN: undefined }),
+      env: env({ ASANA_PROJECT_GID: undefined }),
     });
     expect(result).toEqual({ created: false, reason: "missing-asana-config" });
+  });
+
+  it("does not require env.ASANA_ACCESS_TOKEN to be set -- the deployed Lambda only sets ASANA_ACCESS_TOKEN_SECRET_ARN, never the plaintext token, once asanaClient is already constructed with the real resolved value", async () => {
+    const asanaClient = fakeAsanaClient();
+    const result = await createAsanaTasking({
+      ...BASE_PARAMS,
+      asanaClient,
+      dedupeCache: fakeDedupeCache(),
+      env: env({ ASANA_ACCESS_TOKEN: undefined }),
+    });
+    expect(result.created).toBe(true);
+    expect(asanaClient.createTask).toHaveBeenCalledTimes(1);
   });
 
   it("gates parent-task creation on asanaTaskSimilarityThreshold using the best raw score across topArticles", async () => {
