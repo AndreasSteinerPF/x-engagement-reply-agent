@@ -1,7 +1,12 @@
 # Automation settings. Schema, bounds, and defaults documented in
 # docs/config-schema.md. Loaded and validated by src/config/settings.ts.
 
-pollIntervalMinutes: 2
+# 1440 = once every 24 hours for the real deployed schedule -- rare and
+# cheap by design. The schedule also defaults to disabled at deploy time
+# (see lib/x-engagement-reply-agent-stack.ts's SCHEDULE_ENABLED toggle);
+# use `npm run demo:trigger` to invoke the real deployed Lambda on demand
+# instead of waiting on the schedule for a live demo.
+pollIntervalMinutes: 1440
 defaultBatchSize: 5
 defaultMaxPostsPerAuthor: 20
 
