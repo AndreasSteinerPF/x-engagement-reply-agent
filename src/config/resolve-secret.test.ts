@@ -70,4 +70,15 @@ describe("resolveSecret", () => {
 
     expect(mockSend).toHaveBeenCalledTimes(2);
   });
+
+  it("returns undefined instead of throwing when Secrets Manager fails (missing secret, denied access, outage)", async () => {
+    mockSend.mockRejectedValueOnce(new Error("ResourceNotFoundException"));
+
+    const result = await resolveSecret({
+      secretArn: "arn:aws:secretsmanager:us-east-2:123:secret:missing",
+      region: "us-east-2",
+    });
+
+    expect(result).toBeUndefined();
+  });
 });
