@@ -68,7 +68,13 @@ export function createRunLock(doc: DynamoDBDocumentClient, tableName: string): R
         new DeleteCommand({
           TableName: tableName,
           Key: LOCK_KEY,
-          ConditionExpression: "owner = :owner",
+          // "owner" is a DynamoDB reserved keyword -- must go through
+          // ExpressionAttributeNames rather than appear literally in the
+          // ConditionExpression (only ever caught by a real DynamoDB call;
+          // aws-sdk-client-mock's unit tests don't validate expression
+          // syntax against the reserved-word list).
+          ConditionExpression: "#owner = :owner",
+          ExpressionAttributeNames: { "#owner": "owner" },
           ExpressionAttributeValues: { ":owner": owner },
         }),
       );

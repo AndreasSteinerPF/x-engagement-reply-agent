@@ -71,7 +71,12 @@ describe("createRunLock", () => {
     await expect(lock.releaseLock("run-1")).resolves.toBeUndefined();
 
     const call = ddbMock.commandCalls(DeleteCommand)[0];
-    expect(call.args[0].input.ConditionExpression).toBe("owner = :owner");
+    // "owner" is a DynamoDB reserved keyword -- must be aliased via
+    // ExpressionAttributeNames, not written literally in the expression
+    // (a real ValidationException from live DynamoDB, invisible to this
+    // mock, which doesn't validate expression syntax -- see run-lock.ts).
+    expect(call.args[0].input.ConditionExpression).toBe("#owner = :owner");
+    expect(call.args[0].input.ExpressionAttributeNames).toEqual({ "#owner": "owner" });
     expect(call.args[0].input.ExpressionAttributeValues).toEqual({ ":owner": "run-1" });
   });
 
