@@ -35,7 +35,8 @@ articleSimilarityThreshold: 0.72
 # To use a real model, set a provider key (see .env.example) e.g.:
 #   modelId: openai/gpt-4.1-mini      (needs OPENAI_API_KEY)
 #   modelId: anthropic/claude-sonnet-4-6  (needs ANTHROPIC_API_KEY)
-modelId: openai/gpt-4.1-mini
+#   modelId: openrouter/openai/gpt-4.1-mini  (needs OPENROUTER_API_KEY)
+modelId: openrouter/openai/gpt-4.1-mini
 
 # Authors (normalized) whose own posts are never tasked — e.g. the corpus
 # author. Mirrors the reference "skip if author normalizes to soofisafavi".

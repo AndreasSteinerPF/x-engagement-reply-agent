@@ -18,11 +18,11 @@ const CHAR_LIMIT = 280;
  * not exercised in the demo; the agent falls back to the deterministic generator.
  */
 export class LlmReplyGenerator implements ReplyGenerator {
-  readonly provider: "openai" | "anthropic";
+  readonly provider: "openai" | "anthropic" | "openrouter";
   readonly model: string;
   private readonly apiKey: string;
 
-  constructor(opts: { provider: "openai" | "anthropic"; model: string; apiKey: string }) {
+  constructor(opts: { provider: "openai" | "anthropic" | "openrouter"; model: string; apiKey: string }) {
     this.provider = opts.provider;
     this.model = opts.model;
     this.apiKey = opts.apiKey;
@@ -40,7 +40,9 @@ export class LlmReplyGenerator implements ReplyGenerator {
       const raw =
         this.provider === "openai"
           ? await this.callOpenAI(input.systemPrompt, userPrompt)
-          : await this.callAnthropic(input.systemPrompt, userPrompt);
+          : this.provider === "openrouter"
+            ? await this.callOpenRouter(input.systemPrompt, userPrompt)
+            : await this.callAnthropic(input.systemPrompt, userPrompt);
       parsed = extractJson(raw);
     } catch (err) {
       ok = false;
@@ -89,6 +91,31 @@ export class LlmReplyGenerator implements ReplyGenerator {
       }),
     });
     if (!res.ok) throw new Error(`OpenAI ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    return json.choices?.[0]?.message?.content ?? "";
+  }
+
+  private async callOpenRouter(system: string, user: string): Promise<string> {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+        "HTTP-Referer": "https://x-engagement-reply-agent-clean.vercel.app",
+        "X-Title": "X Engagement Reply Agent",
+      },
+      body: JSON.stringify({
+        model: this.model,
+        temperature: 0.2,
+        max_tokens: 900,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     return json.choices?.[0]?.message?.content ?? "";
   }

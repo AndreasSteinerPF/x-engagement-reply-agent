@@ -1,0 +1,31 @@
+{
+  "posts": [
+    {
+      "statusId": "1801000000000000200",
+      "text": "The case for on-chain property registries is straightforward: cryptographic proofs are cheaper and more reliable than paper-based county systems. Verifiable ownership records make title insurance obsolete.",
+      "kind": "post",
+      "header": "On-chain property registries",
+      "createdAt": "2026-07-07T09:00:00Z"
+    },
+    {
+      "text": "This is the right framing. Digital identity of an asset must be separate from the identity of its physical owner. That separation is what makes privacy-preserving tokenization of real estate possible.",
+      "statusId": "1801000000000000201",
+      "header": "Quoting: decentralized identity thread",
+      "references": [
+        {
+          "handle": "cryptopunk",
+          "author": "Crypto Punk",
+          "statusId": "1800999000000000200",
+          "header": "Decentralized identity for assets",
+          "kind": "post",
+          "text": "If we tokenize real estate, the digital identity of the asset and the physical owner must be separated. Otherwise you are doxxing every property owner on the blockchain, which is a non-starter for adoption.",
+          "createdAt": "2026-07-07T10:20:00Z"
+        }
+      ],
+      "kind": "quote",
+      "createdAt": "2026-07-07T10:45:00Z"
+    }
+  ],
+  "handle": "VitalikButerin",
+  "author": "Vitalik Buterin"
+}

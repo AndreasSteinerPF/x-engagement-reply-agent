@@ -5,7 +5,7 @@ import { loadConfig } from "../config/load.js";
 import type { AgentConfig } from "../config/schema.js";
 import { createXClient } from "../adapters/x/index.js";
 import { createReplyGenerator } from "../adapters/llm/index.js";
-import { OfflineAsanaClient } from "../adapters/asana/offline.js";
+import { createAsanaClient } from "../adapters/asana/index.js";
 import { composeIntentLink, parentTaskName, subtaskName } from "../adapters/asana/notes.js";
 import { McpArticleMatcher } from "../similarity.js";
 import { isExcludedAuthor } from "../pipeline/thresholds.js";
@@ -82,9 +82,12 @@ export async function runWeb(opts: WebRunOptions = {}): Promise<WebRunResult> {
   const logger = new Logger({ context: { agent: "kestrel", surface: "web" } });
   const { client: xClient, mode: xMode } = createXClient({ fixturesDir: join(root, "fixtures", "posts") });
   const { generator, mode: llmMode } = createReplyGenerator(config.settings.modelId);
-  const asana = new OfflineAsanaClient(outDir, {
-    asanaTaskSimilarityThreshold: config.settings.asanaTaskSimilarityThreshold,
-    articleSimilarityThreshold: config.settings.articleSimilarityThreshold,
+  const { client: asana, mode: asanaMode } = createAsanaClient({
+    outDir,
+    thresholds: {
+      asanaTaskSimilarityThreshold: config.settings.asanaTaskSimilarityThreshold,
+      articleSimilarityThreshold: config.settings.articleSimilarityThreshold,
+    },
   });
   const trace = new MemoryTraceSink(runId);
 
@@ -101,7 +104,7 @@ export async function runWeb(opts: WebRunOptions = {}): Promise<WebRunResult> {
     modes: {
       x: xMode,
       llm: llmMode === "offline" ? `offline (${generator.model})` : `${generator.provider}/${generator.model}`,
-      asana: "offline",
+      asana: asanaMode,
     },
   };
 

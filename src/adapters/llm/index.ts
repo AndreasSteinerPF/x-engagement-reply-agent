@@ -30,5 +30,11 @@ export function createReplyGenerator(modelId: string): ReplyGeneratorSelection {
       mode: "live",
     };
   }
+  if (provider === "openrouter" && process.env.OPENROUTER_API_KEY) {
+    return {
+      generator: new LlmReplyGenerator({ provider: "openrouter", model, apiKey: process.env.OPENROUTER_API_KEY }),
+      mode: "live",
+    };
+  }
   return { generator: new DeterministicReplyGenerator(), mode: "offline" };
 }
