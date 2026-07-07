@@ -120,10 +120,13 @@ full user story and acceptance criteria.
   the run summary, releases the lock — is implemented and deployed by the
   CDK stack above.
 - **Evaluator on-demand (public, no AWS credentials needed):** a second
-  Lambda (`src/http-handler.ts`) fronted by a Function URL
-  (`XEngagementReplyAgentStack.HttpTriggerUrl` in the deploy output) shares
-  the exact same `runHandlerCore()` pipeline as `handler.ts`. `GET` on that
-  URL serves a small self-contained HTML page (no separate hosting, no side
+  Lambda (`src/http-handler.ts`) fronted by a Function URL —
+  **https://itcbiyuqao3erlfh7hxl23gcjq0dtgne.lambda-url.us-east-2.on.aws/**
+  (also visible as the CDK stack output `XEngagementReplyAgentStack.HttpTriggerUrl`)
+  — shares the exact same `runHandlerCore()` pipeline as `handler.ts`. The
+  URL itself is not sensitive (viewing the page does nothing; only `POST`
+  with the correct key runs anything). `GET` on that URL serves a small
+  self-contained HTML page (no separate hosting, no side
   effects, no key required just to view it) with a "Run now" button and the
   same friendly result rendering as `demo:trigger`. Actually running the
   pipeline (`POST`) requires a single rotatable API key — resolved from
