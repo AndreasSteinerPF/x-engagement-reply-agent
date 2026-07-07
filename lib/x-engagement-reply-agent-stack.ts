@@ -4,10 +4,52 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
+import { loadRuntimeEnv } from "../src/config/env";
 import { loadSettings } from "../src/config/settings";
 
 const PROJECT_NAME = "x-engagement-reply-agent";
+
+// Operator creates these via `aws secretsmanager create-secret` before
+// deploying (see docs/deployment.md's "Deploy steps") -- CDK only
+// references them by name, it never creates a secret containing a real
+// candidate-supplied credential in the CloudFormation template.
+const ASANA_ACCESS_TOKEN_SECRET_NAME = `${PROJECT_NAME}/asana-access-token`;
+const X_BEARER_TOKEN_SECRET_NAME = `${PROJECT_NAME}/x-bearer-token`;
+const LANGSMITH_API_KEY_SECRET_NAME = `${PROJECT_NAME}/langsmith-api-key`;
+
+/**
+ * Builds the Lambda's plaintext environment variables from process.env
+ * (loaded from .env by bin/x-engagement-reply-agent.ts, same file
+ * scripts/invoke-local.ts reads) -- omitting anything unset rather than
+ * writing empty-string env vars. Secrets (Asana/X/LangSmith tokens) are
+ * deliberately excluded here; those are wired separately as
+ * Secrets-Manager-ARN env vars, never as plaintext values.
+ */
+function nonSecretEnvironment(env: ReturnType<typeof loadRuntimeEnv>): Record<string, string> {
+  const candidates: Record<string, string | undefined> = {
+    ASANA_PROJECT_GID: env.ASANA_PROJECT_GID,
+    ASANA_WORKSPACE_GID: env.ASANA_WORKSPACE_GID,
+    ASANA_SECTION_GID: env.ASANA_SECTION_GID,
+    ASANA_ASSIGNEE_GID: env.ASANA_ASSIGNEE_GID,
+    ASANA_ARTICLE_THRESHOLD_ASSIGNEE_GID: env.ASANA_ARTICLE_THRESHOLD_ASSIGNEE_GID,
+    ASANA_SIMILARITY_SCORE_CUSTOM_FIELD_GID: env.ASANA_SIMILARITY_SCORE_CUSTOM_FIELD_GID,
+    ASANA_TASK_SIMILARITY_SCORE_CUSTOM_FIELD_GID: env.ASANA_TASK_SIMILARITY_SCORE_CUSTOM_FIELD_GID,
+    ASANA_SUBTASK_SIMILARITY_SCORE_CUSTOM_FIELD_GID:
+      env.ASANA_SUBTASK_SIMILARITY_SCORE_CUSTOM_FIELD_GID,
+    ASANA_EXISTING_TASK_DEDUPE_ENABLED: env.ASANA_EXISTING_TASK_DEDUPE_ENABLED,
+    LANGSMITH_PROJECT: env.LANGSMITH_PROJECT,
+    LANGSMITH_TRACING: env.LANGSMITH_TRACING,
+    LANGSMITH_ENDPOINT: env.LANGSMITH_ENDPOINT,
+  };
+
+  return Object.fromEntries(
+    Object.entries(candidates).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== "",
+    ),
+  );
+}
 
 // Bedrock's cross-region inference profile ID prefixes (see the "Inference
 // profiles" page in the Bedrock console) -- a modelId starting with one of
@@ -70,6 +112,24 @@ export class XEngagementReplyAgentStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    const asanaAccessTokenSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "AsanaAccessTokenSecret",
+      ASANA_ACCESS_TOKEN_SECRET_NAME,
+    );
+    const xBearerTokenSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "XBearerTokenSecret",
+      X_BEARER_TOKEN_SECRET_NAME,
+    );
+    const langsmithApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "LangsmithApiKeySecret",
+      LANGSMITH_API_KEY_SECRET_NAME,
+    );
+
+    const runtimeEnv = loadRuntimeEnv(process.env);
+
     const copyAssetsScript = path.join(__dirname, "..", "scripts", "copy-lambda-assets.ts");
 
     const monitorHandler = new lambda.NodejsFunction(this, "MonitorHandler", {
@@ -82,6 +142,10 @@ export class XEngagementReplyAgentStack extends cdk.Stack {
       logGroup: monitorLogGroup,
       environment: {
         STATE_TABLE_NAME: stateTable.tableName,
+        ASANA_ACCESS_TOKEN_SECRET_ARN: asanaAccessTokenSecret.secretArn,
+        X_BEARER_TOKEN_SECRET_ARN: xBearerTokenSecret.secretArn,
+        LANGSMITH_API_KEY_SECRET_ARN: langsmithApiKeySecret.secretArn,
+        ...nonSecretEnvironment(runtimeEnv),
       },
       // NodejsFunction only bundles imported JS by default -- config/*.yaml
       // and prompts/**/*.md are read from disk at runtime
@@ -104,6 +168,9 @@ export class XEngagementReplyAgentStack extends cdk.Stack {
     });
 
     stateTable.grantReadWriteData(monitorHandler);
+    asanaAccessTokenSecret.grantRead(monitorHandler);
+    xBearerTokenSecret.grantRead(monitorHandler);
+    langsmithApiKeySecret.grantRead(monitorHandler);
 
     const settings = loadSettings();
     monitorHandler.addToRolePolicy(
