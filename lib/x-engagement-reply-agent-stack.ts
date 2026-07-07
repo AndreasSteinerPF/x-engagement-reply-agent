@@ -1,10 +1,13 @@
 import * as path from "node:path";
 import * as cdk from "aws-cdk-lib";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as scheduler from "aws-cdk-lib/aws-scheduler";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { loadRuntimeEnv } from "../src/config/env";
 import { loadSettings } from "../src/config/settings";
@@ -83,10 +86,12 @@ function bedrockModelInvokeArns(stack: cdk.Stack, modelId: string): string[] {
 }
 
 /**
- * Phase 0 scaffold: a single Lambda + a single DynamoDB state table.
- * EventBridge Scheduler, DLQ, alarms, and Secrets Manager entries are wired
- * in Phase 6 once the runtime orchestration (Phase 5) exists to invoke.
- * See docs/implementation-plan.md for the full target architecture.
+ * Full Phase 6 stack: the monitor Lambda, its DynamoDB state table,
+ * Secrets Manager references, Bedrock IAM, and an EventBridge Scheduler
+ * trigger with a DLQ + alarm on failed invocations. See
+ * docs/implementation-plan.md for the target architecture and
+ * docs/deployment.md for the deploy runbook (secrets to create first, the
+ * SCHEDULE_ENABLED safety toggle, etc.).
  */
 export class XEngagementReplyAgentStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -179,5 +184,59 @@ export class XEngagementReplyAgentStack extends cdk.Stack {
         resources: bedrockModelInvokeArns(this, settings.modelId),
       }),
     );
+
+    // Catches failed *invocations* of the schedule's target (e.g. the
+    // Scheduler service itself couldn't call the Lambda after retries --
+    // permissions, throttling) -- distinct from a failed *execution* of the
+    // handler's own logic, which notify-critical-failure.ts already covers
+    // via handler.ts's catch block. One DLQ, one alarm on it (the company's
+    // one-alarm-per-DLQ pattern) -- no SNS/PagerDuty action attached, since
+    // no real on-call system exists for this take-home (see
+    // docs/deployment.md's observability note).
+    const scheduleDlq = new sqs.Queue(this, "MonitorScheduleDlq", {
+      queueName: `${PROJECT_NAME}-schedule-dlq`,
+      retentionPeriod: cdk.Duration.days(14),
+    });
+
+    new cloudwatch.Alarm(this, "MonitorScheduleDlqAlarm", {
+      alarmDescription:
+        "EventBridge Scheduler failed to invoke the monitor Lambda after retries. " +
+        "Production would page on-call via this alarm's SNS action; see docs/deployment.md.",
+      metric: scheduleDlq.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+        statistic: "Maximum",
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    const schedulerRole = new iam.Role(this, "MonitorSchedulerRole", {
+      assumedBy: new iam.ServicePrincipal("scheduler.amazonaws.com"),
+    });
+    monitorHandler.grantInvoke(schedulerRole);
+    scheduleDlq.grantSendMessages(schedulerRole);
+
+    // Defaults to DISABLED: a fresh deploy shouldn't silently start polling
+    // real X/Bedrock/Asana on a live schedule before the operator has
+    // deliberately confirmed the poll interval and flipped this on (see
+    // docs/deployment.md's "Deploy steps"). Set SCHEDULE_ENABLED=true when
+    // running cdk deploy to enable it.
+    const scheduleEnabled = process.env.SCHEDULE_ENABLED === "true";
+
+    new scheduler.CfnSchedule(this, "MonitorSchedule", {
+      name: `${PROJECT_NAME}-monitor-schedule`,
+      description: `Polls the X watchlist every ${settings.pollIntervalMinutes} minute(s), per config/settings.yaml.`,
+      state: scheduleEnabled ? "ENABLED" : "DISABLED",
+      scheduleExpression: `rate(${settings.pollIntervalMinutes} minute${settings.pollIntervalMinutes === 1 ? "" : "s"})`,
+      flexibleTimeWindow: { mode: "OFF" },
+      target: {
+        arn: monitorHandler.functionArn,
+        roleArn: schedulerRole.roleArn,
+        input: JSON.stringify({}),
+        deadLetterConfig: { arn: scheduleDlq.queueArn },
+      },
+    });
   }
 }
