@@ -57,7 +57,12 @@ authors:
   `modelId: openai/gpt-4.1-mini` — that's a legacy AI-gateway ID from the
   Vercel-hosted reference app. This agent calls Bedrock through the Vercel AI
   SDK, so `modelId` must be a real Bedrock model ID or inference profile
-  (e.g. `anthropic.claude-3-5-haiku-20241022-v1:0`), not an AI-gateway string.
+  enabled in the target account/region, not an AI-gateway string. As of
+  2026-07-07, Claude 3.5 Haiku is retired from the Bedrock catalog; the
+  candidate's own account uses the US cross-region inference profile
+  `us.anthropic.claude-haiku-4-5-20251001-v1:0` instead (verified in the
+  Bedrock console — search "Inference profiles" for the current ID if this
+  drifts again).
 - **`defaultTopK`** bound widened 20 → 100 as a config-level knob, but see
   "`defaultTopK` vs. what the live MCP server actually accepts" below — the
   live server itself still caps at 20, and the matching module clamps to it.

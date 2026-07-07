@@ -18,8 +18,11 @@ articleSimilarityThreshold: 0.7
 
 # Must be a Bedrock model ID or inference profile enabled in the target
 # account/region -- NOT a legacy AI-gateway ID like "openai/gpt-4.1-mini"
-# (see docs/config-schema.md, "Legacy vs new fields").
-modelId: "anthropic.claude-3-5-haiku-20241022-v1:0"
+# (see docs/config-schema.md, "Legacy vs new fields"). Claude 3.5 Haiku has
+# been retired from the Bedrock catalog; this is the US cross-region
+# inference profile for Claude Haiku 4.5, verified against the candidate's
+# own AWS account/region (us-east-2) on 2026-07-07.
+modelId: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # How long processed-post dedupe entries live in DynamoDB before TTL-expiry.
 dedupeTtlDays: 90
