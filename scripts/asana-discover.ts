@@ -110,7 +110,16 @@ async function main(): Promise<void> {
   console.log(`ASANA_ASSIGNEE_GID=${me.data.gid}  # your own user gid, or pick another`);
   console.log("ASANA_ARTICLE_THRESHOLD_ASSIGNEE_GID=<optional, can be the same or different user>");
   console.log(
-    "ASANA_SIMILARITY_SCORE_CUSTOM_FIELD_GID=<a Number-type custom field gid from above, optional>",
+    "ASANA_SIMILARITY_SCORE_CUSTOM_FIELD_GID=<a Number-type custom field gid from above, optional, shared fallback for both fields below>",
+  );
+  console.log(
+    "ASANA_TASK_SIMILARITY_SCORE_CUSTOM_FIELD_GID=<optional, overrides the shared field above for the parent task>",
+  );
+  console.log(
+    "ASANA_SUBTASK_SIMILARITY_SCORE_CUSTOM_FIELD_GID=<optional, overrides the shared field above for subtasks>",
+  );
+  console.log(
+    'ASANA_EXISTING_TASK_DEDUPE_ENABLED=<optional, defaults to true; set to "false" to disable the live Asana task scan>',
   );
 }
 
