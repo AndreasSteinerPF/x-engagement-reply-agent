@@ -1,8 +1,8 @@
-import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import * as ai from "ai";
 import { Client } from "langsmith";
 import { wrapAISDK } from "langsmith/experimental/vercel";
 import type { RuntimeEnv } from "../config/env";
+import { resolveSecret } from "../config/resolve-secret";
 
 // Adapted from soofi-xyz-team-kit's observability-langsmith-telemetry.md.
 // The reference facade wraps `ToolLoopAgent` (for the kit's inbound
@@ -18,29 +18,8 @@ export type LangSmithFacade = {
   flush: () => Promise<void>;
 };
 
-let cachedApiKey: string | undefined;
-
 function tracingRequested(env: RuntimeEnv): boolean {
   return env.LANGSMITH_TRACING !== "false";
-}
-
-async function resolveApiKey(env: RuntimeEnv): Promise<string | undefined> {
-  if (env.LANGSMITH_API_KEY?.trim()) {
-    return env.LANGSMITH_API_KEY.trim();
-  }
-  if (cachedApiKey) {
-    return cachedApiKey;
-  }
-
-  const arn = env.LANGSMITH_API_KEY_SECRET_ARN?.trim();
-  if (!arn) return undefined;
-
-  const client = new SecretsManagerClient({ region: env.AWS_REGION });
-  const result = await client.send(new GetSecretValueCommand({ SecretId: arn }));
-  if (result.SecretString) {
-    cachedApiKey = result.SecretString;
-  }
-  return cachedApiKey;
 }
 
 function passthroughFacade(): LangSmithFacade {
@@ -61,7 +40,11 @@ export async function createLangSmithFacade(env: RuntimeEnv): Promise<LangSmithF
     return passthroughFacade();
   }
 
-  const apiKey = await resolveApiKey(env);
+  const apiKey = await resolveSecret({
+    plainValue: env.LANGSMITH_API_KEY,
+    secretArn: env.LANGSMITH_API_KEY_SECRET_ARN,
+    region: env.AWS_REGION,
+  });
   if (!apiKey) {
     return passthroughFacade();
   }

@@ -17,7 +17,12 @@ const RuntimeEnvSchema = z.object({
   // Asana identifiers/credentials -- deployment-time, per-environment
   // config (candidate-supplied), not business config, so these are env
   // vars rather than config/settings.yaml fields (see CLAUDE.md).
+  // ASANA_ACCESS_TOKEN is for local dev (.env) only -- the deployed Lambda
+  // never receives it as a plaintext environment variable, only the
+  // *_SECRET_ARN pointer, resolved at runtime via src/config/resolve-secret.ts
+  // (same pattern as LANGSMITH_API_KEY_SECRET_ARN below).
   ASANA_ACCESS_TOKEN: z.string().optional(),
+  ASANA_ACCESS_TOKEN_SECRET_ARN: z.string().optional(),
   ASANA_PROJECT_GID: z.string().optional(),
   ASANA_WORKSPACE_GID: z.string().optional(),
   ASANA_SECTION_GID: z.string().optional(),
@@ -33,7 +38,10 @@ const RuntimeEnvSchema = z.object({
   // local invocation touches neither X nor DynamoDB); handler.ts asserts
   // their presence explicitly before constructing the clients that need
   // them, so the *general* env loader stays usable in narrower contexts.
+  // Same local-dev-plain-value-vs-deployed-secret-ARN split as
+  // ASANA_ACCESS_TOKEN above.
   X_BEARER_TOKEN: z.string().optional(),
+  X_BEARER_TOKEN_SECRET_ARN: z.string().optional(),
   STATE_TABLE_NAME: z.string().optional(),
 });
 

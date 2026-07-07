@@ -3,6 +3,7 @@ import { createDraftingModel } from "./agent/bedrock-model";
 import { createAsanaClient } from "./asana/client";
 import { createAsanaDedupeCache } from "./asana/dedupe";
 import { loadRuntimeEnv } from "./config/env";
+import { resolveSecret } from "./config/resolve-secret";
 import { loadSettings } from "./config/settings";
 import { loadWatchlist } from "./config/watchlist";
 import {
@@ -72,7 +73,12 @@ export async function handler(event: HandlerEvent = {}): Promise<RunSummary> {
   const watchlist = loadWatchlist();
   const promptSet = loadPromptSet();
 
-  const xClient = createXClient({ bearerToken: requireEnv(env.X_BEARER_TOKEN, "X_BEARER_TOKEN") });
+  const xBearerToken = await resolveSecret({
+    plainValue: env.X_BEARER_TOKEN,
+    secretArn: env.X_BEARER_TOKEN_SECRET_ARN,
+    region: env.AWS_REGION,
+  });
+  const xClient = createXClient({ bearerToken: requireEnv(xBearerToken, "X_BEARER_TOKEN") });
   const mcpClient = createInvestorMcpClient();
   const breaker = createCircuitBreaker(3);
   const model = createDraftingModel(settings.modelId, env);
@@ -90,7 +96,14 @@ export async function handler(event: HandlerEvent = {}): Promise<RunSummary> {
   if (dryRun) {
     gateway = createDryRunSideEffectGateway();
   } else {
-    const asanaClient = createAsanaClient({ accessToken: env.ASANA_ACCESS_TOKEN ?? "" });
+    const asanaAccessToken = await resolveSecret({
+      plainValue: env.ASANA_ACCESS_TOKEN,
+      secretArn: env.ASANA_ACCESS_TOKEN_SECRET_ARN,
+      region: env.AWS_REGION,
+    });
+    const asanaClient = createAsanaClient({
+      accessToken: requireEnv(asanaAccessToken, "ASANA_ACCESS_TOKEN"),
+    });
     const dedupeCache = createAsanaDedupeCache({ asanaClient });
     gateway = createLiveSideEffectGateway({
       asanaClient,

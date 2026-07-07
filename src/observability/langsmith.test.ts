@@ -26,13 +26,9 @@ vi.mock("langsmith/experimental/vercel", () => ({
 import * as ai from "ai";
 import { createLangSmithFacade } from "./langsmith";
 
-// NOTE: resolveApiKey's cachedApiKey is intentional module-scope state (a
-// single Lambda container should only fetch the secret once). That means
-// these tests are order-sensitive: "degrades gracefully" below MUST run
-// before any test that populates the cache via a SECRET_ARN, or it will
-// observe a stale cached key instead of "no key resolvable." Vitest runs
-// tests within a describe block in declaration order, so keep that test
-// first among the ARN-touching cases.
+// Secret caching (a single warm Lambda container should only fetch a given
+// ARN once) now lives in src/config/resolve-secret.ts, keyed per-ARN -- see
+// resolve-secret.test.ts for that behavior directly.
 const BASE_ENV = { AWS_REGION: "us-east-2" };
 
 beforeEach(() => {
