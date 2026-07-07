@@ -11,7 +11,11 @@ authors:
     aliases:
       handles: []
       authors: []
-    active: true
+    # Temporarily deactivated for a clean single-match recording -- crypto.com's
+    # content never scores near the corpus threshold anyway, so this only
+    # removes an always-zero-subtask task from the demo's Asana project, not
+    # any real coverage. Re-enable after recording.
+    active: false
 
   - author: "Propy"
     handle: "propy"
