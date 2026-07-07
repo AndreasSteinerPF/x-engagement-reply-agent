@@ -2,16 +2,36 @@
 
 **Status: Phase 5 and Phase 6 both complete — the full pipeline is deployed
 to AWS and verified live, both locally (`invoke-local.ts`) and as the actual
-deployed Lambda.** `XEngagementReplyAgentStack` is live in account
-`293406302954` (`us-east-2`): DynamoDB state table, the monitor Lambda,
-Secrets Manager references, Bedrock IAM, and an EventBridge Schedule
-(deliberately left `DISABLED` — see below) with a DLQ + alarm. Verified via
-`npm run demo:trigger` invoking the real deployed Lambda directly: correctly
-polled a 5-author batch, made real X API calls (15 real posts fetched from
-one account), and correctly suppressed Asana writes under `dryRun: true` —
-real, live, end-to-end proof the deployment actually works, not just that it
-synths cleanly. This document is filled in progressively as each phase in
-[`implementation-plan.md`](./implementation-plan.md) lands.
+deployed Lambda, including a real Asana task created by the deployed Lambda
+itself.** `XEngagementReplyAgentStack` is live in account `293406302954`
+(`us-east-2`): DynamoDB state table, the monitor Lambda, Secrets Manager
+references, Bedrock IAM, and an EventBridge Schedule (deliberately left
+`DISABLED` — see below) with a DLQ + alarm. Verified via `npm run
+demo:trigger` invoking the real deployed Lambda directly, end to end: a
+dry run correctly polled a 5-author batch, made real X API calls (15 real
+posts fetched from one account), and suppressed all Asana writes; a
+subsequent live run against a fresh real post created a real Asana parent
+task with 21 real approval subtasks — `outcome: "tasked"`, straight from the
+deployed Lambda, not `invoke-local.ts`.
+
+Two real bugs surfaced only by this — the first time the actual Lambda code
+path (not `invoke-local.ts`, which never touches `handler.ts`/`run-lock.ts`
+at all) ever ran against real DynamoDB/Asana:
+
+- **`run-lock.ts`'s `releaseLock`** used `"owner"` literally in a
+  `ConditionExpression` — a DynamoDB reserved keyword, throwing a real
+  `ValidationException` on every release. Invisible to the mocked unit test,
+  which doesn't validate expression syntax against the reserved-word list.
+- **`create-asana-tasking.ts`** required `env.ASANA_ACCESS_TOKEN` (the plain
+  env var) to be set, a stale leftover from before the Secrets Manager
+  refactor — the deployed Lambda deliberately never sets that plaintext var
+  anymore (only `ASANA_ACCESS_TOKEN_SECRET_ARN`), so every real deployed run
+  reported `"missing-asana-config"` and skipped tasking, even with a fully
+  valid, working Asana client.
+
+Both are fixed, tested, and redeployed — see the commit history around
+2026-07-07 for the exact fixes. This document is filled in progressively as
+each phase in [`implementation-plan.md`](./implementation-plan.md) lands.
 `scripts/invoke-local.ts` calls the real `runMonitor()` orchestrator (the
 same function `handler.ts` uses in Lambda), and every dependency has now
 been exercised live:
