@@ -37,6 +37,16 @@ been exercised live:
 This is a real, live, end-to-end proof of the core acceptance criteria — not
 just passing unit tests against fixtures.
 
+Two more Required Demo Scenarios have since been walked through live:
+editing `prompts/replies/03-agree-with-practical-example.md`'s tone (verified
+via direct before/after draft comparison against the real corpus and real
+Bedrock — the reply's phrasing genuinely shifted from analytical to casual
+while still passing grounding validation), and adding a 7th prompt slot
+(`07-clarifying-question.md`, zero code changes) — verified via a real Asana
+task on a fresh post showing 21 subtasks (3 matched articles × 7 prompts),
+directly comparable to an earlier real task's 18 (3 × 6) created before that
+prompt existed.
+
 ## Purpose
 
 Scheduled agent that polls a configured watchlist of X authors, matches new
