@@ -119,6 +119,22 @@ full user story and acceptance criteria.
   real client/store, acquires the run lock, calls `runMonitor()`, persists
   the run summary, releases the lock — is implemented and deployed by the
   CDK stack above.
+- **Evaluator on-demand (public, no AWS credentials needed):** a second
+  Lambda (`src/http-handler.ts`) fronted by a Function URL
+  (`XEngagementReplyAgentStack.HttpTriggerUrl` in the deploy output) shares
+  the exact same `runHandlerCore()` pipeline as `handler.ts`. `GET` on that
+  URL serves a small self-contained HTML page (no separate hosting, no side
+  effects, no key required just to view it) with a "Run now" button and the
+  same friendly result rendering as `demo:trigger`. Actually running the
+  pipeline (`POST`) requires a single rotatable API key — resolved from
+  Secrets Manager server-side, checked against the `x-api-key` header —
+  rather than a standing IAM identity: easier to revoke (delete/rotate one
+  secret value), no AWS CLI or credential setup needed on the caller's end.
+  **The key value itself is deliberately not committed anywhere in this
+  repo** (typed into the page's own input field, or sent as a header
+  directly) — it was shared with the evaluator out-of-band. Defaults to
+  `dryRun=true` (safe); pass `?dryRun=false` (or uncheck the box in the UI)
+  for a real run.
 
 ## Inputs
 
@@ -176,16 +192,22 @@ for why that's not wired here.
    Creates the S3 bucket/ECR repo CDK uses to publish assets (the bundled
    Lambda code, in this stack's case).
 
-2. **Create the three Secrets Manager secrets** the stack references by
+2. **Create the four Secrets Manager secrets** the stack references by
    name (CDK never creates these itself — it only reads them at runtime via
-   `resolveSecret()`, so the real token values never appear in the
-   CloudFormation template):
+   `resolveSecret()`, so the real values never appear in the CloudFormation
+   template):
    ```
    aws secretsmanager create-secret --name x-engagement-reply-agent/asana-access-token --secret-string "<your Asana PAT>" --region us-east-2
    aws secretsmanager create-secret --name x-engagement-reply-agent/x-bearer-token --secret-string "<your X bearer token>" --region us-east-2
    aws secretsmanager create-secret --name x-engagement-reply-agent/langsmith-api-key --secret-string "<your LangSmith API key>" --region us-east-2
+   aws secretsmanager create-secret --name x-engagement-reply-agent/evaluator-api-key --secret-string "$(node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))")" --region us-east-2
    ```
-   LangSmith is optional (the facade degrades gracefully if this secret is
+   The first three are candidate-private credentials. `evaluator-api-key` is
+   different in kind — it's the value meant to be handed to an evaluator (see
+   "Triggers" above) to gate the public Function URL. Generate it randomly
+   as shown, then share the value out-of-band (not via this repo/PR) with
+   whoever needs to trigger the deployed system without AWS credentials.
+   LangSmith is optional (the facade degrades gracefully if that secret is
    ever unreachable) — still worth creating so tracing works once deployed.
 
 3. **Confirm `.env` has the non-secret values** (`ASANA_PROJECT_GID`,
